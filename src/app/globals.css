@@ -875,3 +875,441 @@ main {
   border: 1px solid rgba(255, 255, 255, 0.1) !important;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2) !important;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CSS Polish & Animations — Task 12 Enhancements
+   Premium micro-interactions, loading states, and visual effects
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Shimmer Loading Effect for Glass Cards ──
+   Apply .shimmer-loading to any glass-card to show a beautiful
+   sweeping shimmer while content is loading. Pair with opacity
+   or pointer-events for a proper skeleton state. */
+
+@keyframes card-shimmer-sweep {
+  0% {
+    background-position: -400% 0;
+  }
+  100% {
+    background-position: 400% 0;
+  }
+}
+
+.shimmer-loading {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    105deg,
+    transparent 20%,
+    rgba(96, 99, 238, 0.04) 30%,
+    rgba(166, 181, 253, 0.08) 40%,
+    rgba(96, 99, 238, 0.04) 50%,
+    transparent 60%
+  );
+  background-size: 400% 100%;
+  animation: card-shimmer-sweep 2.4s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.dark .shimmer-loading::after {
+  background: linear-gradient(
+    105deg,
+    transparent 20%,
+    rgba(192, 193, 255, 0.03) 30%,
+    rgba(166, 181, 253, 0.07) 40%,
+    rgba(192, 193, 255, 0.03) 50%,
+    transparent 60%
+  );
+  background-size: 400% 100%;
+  animation: card-shimmer-sweep 2.4s ease-in-out infinite;
+}
+
+/* ── 2. Enhanced Scrollbar with Gradient Thumb ──
+   Rounded thumb with lumina-primary gradient and a smooth
+   hover expansion effect. Applied to the main page scrollbar
+   and all scrollable containers. */
+
+/* Main page scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(70, 72, 212, 0.2) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(70, 72, 212, 0.35) 0%,
+    rgba(96, 99, 238, 0.25) 50%,
+    rgba(166, 181, 253, 0.2) 100%
+  );
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: all 0.25s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(70, 72, 212, 0.55) 0%,
+    rgba(96, 99, 238, 0.45) 50%,
+    rgba(166, 181, 253, 0.35) 100%
+  );
+  background-clip: padding-box;
+  border: 1px solid transparent;
+  width: 8px;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    rgba(192, 193, 255, 0.15) 0%,
+    rgba(166, 181, 253, 0.1) 50%,
+    rgba(96, 99, 238, 0.08) 100%
+  );
+  background-clip: padding-box;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    rgba(192, 193, 255, 0.28) 0%,
+    rgba(166, 181, 253, 0.2) 50%,
+    rgba(96, 99, 238, 0.15) 100%
+  );
+  background-clip: padding-box;
+}
+
+/* ── 3. Toast Notification Enter/Exit Animations ──
+   Custom spring-like animations for Sonner toasts that match
+   the Lumina design language. Uses [data-sonner-toast] selectors
+   to hook into Sonner's internal state attributes. */
+
+@keyframes toast-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(100%) scale(0.92);
+    filter: blur(4px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes toast-slide-out {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  40% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%) scale(0.92);
+    filter: blur(4px);
+  }
+}
+
+/* Toast entering */
+[data-sonner-toast][data-visible="true"] {
+  animation: toast-slide-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Toast exiting */
+[data-sonner-toast][data-removed="true"] {
+  animation: toast-slide-out 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+/* Toast hover lift */
+[data-sonner-toast]:hover {
+  transform: translateY(-2px) scale(1.01);
+  box-shadow: 0 12px 40px rgba(70, 72, 212, 0.12) !important;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.dark [data-sonner-toast]:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* ── 4. Enhanced Focus Ring with Lumina Glow ──
+   Replaces the basic focus-visible outline with a soft outer glow
+   and inner ring matching the lumina-primary color. Provides a
+   premium, accessible focus indicator across all interactive elements. */
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--lumina-surface),
+    0 0 0 4px rgba(70, 72, 212, 0.4),
+    0 0 20px rgba(96, 99, 238, 0.15);
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
+}
+
+.dark button:focus-visible,
+.dark a:focus-visible,
+.dark input:focus-visible,
+.dark textarea:focus-visible,
+.dark select:focus-visible,
+.dark [tabindex]:focus-visible {
+  box-shadow:
+    0 0 0 2px var(--lumina-surface),
+    0 0 0 4px rgba(192, 193, 255, 0.35),
+    0 0 24px rgba(192, 193, 255, 0.1);
+}
+
+/* ── 5. Card Border Gradient Animation (Stripe-style) ──
+   Creates an animated rotating gradient on the card border,
+   similar to Stripe's premium card effects. Uses a conic-gradient
+   with @property for smooth hue animation. */
+
+@property --border-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes border-rotate {
+  0% { --border-angle: 0deg; }
+  100% { --border-angle: 360deg; }
+}
+
+.card-border-gradient {
+  position: relative;
+  border-radius: 1rem;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* Gradient border layer */
+.card-border-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--border-angle),
+    rgba(70, 72, 212, 0.5) 0%,
+    rgba(96, 99, 238, 0.3) 15%,
+    transparent 30%,
+    transparent 70%,
+    rgba(166, 181, 253, 0.3) 85%,
+    rgba(70, 72, 212, 0.5) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: border-rotate 4s linear infinite;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Inner card fill to cover the border's background */
+.card-border-gradient::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(1rem - 1px);
+  background: var(--lumina-surface);
+  z-index: 1;
+}
+
+/* Ensure card content sits above the pseudo-elements */
+.card-border-gradient > * {
+  position: relative;
+  z-index: 3;
+}
+
+.dark .card-border-gradient::before {
+  background: conic-gradient(
+    from var(--border-angle),
+    rgba(192, 193, 255, 0.4) 0%,
+    rgba(166, 181, 253, 0.2) 15%,
+    transparent 30%,
+    transparent 70%,
+    rgba(96, 99, 238, 0.2) 85%,
+    rgba(192, 193, 255, 0.4) 100%
+  );
+}
+
+.dark .card-border-gradient::after {
+  background: var(--lumina-surface);
+}
+
+/* Hover: speed up rotation and increase visibility */
+.card-border-gradient:hover::before {
+  animation-duration: 2s;
+}
+
+/* ── 6. Text Input Glow on Focus ──
+   Adds a soft radial glow around text inputs when focused,
+   matching the voice orb's glow aesthetic for visual consistency. */
+
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="search"]:focus,
+input[type="url"]:focus,
+input[type="tel"]:focus,
+textarea:focus,
+input:not([type]):focus {
+  box-shadow:
+    0 0 0 2px rgba(70, 72, 212, 0.2),
+    0 0 24px rgba(96, 99, 238, 0.1),
+    0 0 48px rgba(166, 181, 253, 0.05);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  border-color: rgba(70, 72, 212, 0.4) !important;
+}
+
+.dark input[type="text"]:focus,
+.dark input[type="email"]:focus,
+.dark input[type="password"]:focus,
+.dark input[type="search"]:focus,
+.dark input[type="url"]:focus,
+.dark input[type="tel"]:focus,
+.dark textarea:focus,
+.dark input:not([type]):focus {
+  box-shadow:
+    0 0 0 2px rgba(192, 193, 255, 0.15),
+    0 0 28px rgba(192, 193, 255, 0.06),
+    0 0 56px rgba(166, 181, 253, 0.03);
+  border-color: rgba(192, 193, 255, 0.3) !important;
+}
+
+/* ── 7. Tab Content Transition Animations ──
+   Smoother, more expressive page transitions for tab switching.
+   Content fades and slides in from the bottom with a subtle
+   spring-like easing. The exit is quick and minimal to avoid
+   jarring flashes between tab panels. */
+
+@keyframes tab-content-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.99);
+    filter: blur(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes tab-content-exit {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+}
+
+/* Apply to tab panels — use .tab-panel on the switching container */
+.tab-panel {
+  animation: tab-content-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Staggered children inside tab panels */
+.tab-panel > * {
+  animation: tab-content-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.tab-panel > *:nth-child(1) { animation-delay: 0.03s; }
+.tab-panel > *:nth-child(2) { animation-delay: 0.06s; }
+.tab-panel > *:nth-child(3) { animation-delay: 0.09s; }
+.tab-panel > *:nth-child(4) { animation-delay: 0.12s; }
+.tab-panel > *:nth-child(5) { animation-delay: 0.15s; }
+.tab-panel > *:nth-child(6) { animation-delay: 0.18s; }
+.tab-panel > *:nth-child(n+7) { animation-delay: 0.21s; }
+
+/* ── 8. Enhanced Button Ripple Effect ──
+   Improves the existing .ripple-effect with better positioning.
+   The ripple now originates from the exact click/touch position
+   using CSS custom properties (--ripple-x, --ripple-y) set via JS.
+   The ripple expands from the click point outward with a smooth
+   fade, and the gradient is more visible and refined. */
+
+@keyframes ripple-expand {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+.ripple-effect {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Override the previous static ::after with a dynamic ripple span */
+.ripple-effect .ripple-wave {
+  position: absolute;
+  left: var(--ripple-x, 50%);
+  top: var(--ripple-y, 50%);
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    circle at center,
+    rgba(96, 99, 238, 0.18) 0%,
+    rgba(70, 72, 212, 0.08) 40%,
+    transparent 70%
+  );
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  z-index: 2;
+  animation: ripple-expand 0.6s cubic-bezier(0, 0.5, 0.3, 1) forwards;
+}
+
+.dark .ripple-effect .ripple-wave {
+  background: radial-gradient(
+    circle at center,
+    rgba(192, 193, 255, 0.12) 0%,
+    rgba(166, 181, 253, 0.06) 40%,
+    transparent 70%
+  );
+}

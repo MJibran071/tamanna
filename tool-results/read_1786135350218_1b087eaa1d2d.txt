@@ -1,0 +1,1155 @@
+     1→"use client";
+     2→
+     3→import { useState, useCallback, useEffect, lazy, Suspense } from "react";
+     4→import { useTheme } from "next-themes";
+     5→import {
+     6→  Settings,
+     7→  Sun,
+     8→  Moon,
+     9→  Monitor,
+    10→  Volume2,
+    11→  Languages,
+    12→  Trash2,
+    13→  Info,
+    14→  Clock,
+    15→  Plus,
+    16→  Trash,
+    17→  Play,
+    18→  Pause,
+    19→  RefreshCw,
+    20→  AlertCircle,
+    21→  CheckCircle2,
+    22→  CalendarClock,
+    23→  Repeat,
+    24→  Timer,
+    25→  Plug,
+    26→  Link2,
+    27→  Zap,
+    28→  Database,
+    29→  XCircle,
+    30→  Search,
+    31→  X,
+    32→  Users,
+    33→} from "lucide-react";
+    34→import {
+    35→  Sheet,
+    36→  SheetContent,
+    37→  SheetHeader,
+    38→  SheetTitle,
+    39→  SheetDescription,
+    40→} from "@/components/ui/sheet";
+    41→import { Switch } from "@/components/ui/switch";
+    42→import { Slider } from "@/components/ui/slider";
+    43→import { Label } from "@/components/ui/label";
+    44→import { Separator } from "@/components/ui/separator";
+    45→import { Button } from "@/components/ui/button";
+    46→import { Input } from "@/components/ui/input";
+    47→import { Textarea } from "@/components/ui/textarea";
+    48→import {
+    49→  Select,
+    50→  SelectContent,
+    51→  SelectItem,
+    52→  SelectTrigger,
+    53→  SelectValue,
+    54→} from "@/components/ui/select";
+    55→import {
+    56→  AlertDialog,
+    57→  AlertDialogAction,
+    58→  AlertDialogCancel,
+    59→  AlertDialogContent,
+    60→  AlertDialogDescription,
+    61→  AlertDialogFooter,
+    62→  AlertDialogHeader,
+    63→  AlertDialogTitle,
+    64→  AlertDialogTrigger,
+    65→} from "@/components/ui/alert-dialog";
+    66→import {
+    67→  Dialog,
+    68→  DialogContent,
+    69→  DialogHeader,
+    70→  DialogTitle,
+    71→  DialogDescription,
+    72→  DialogTrigger,
+    73→} from "@/components/ui/dialog";
+    74→import { useAgentStore } from "@/lib/stores/agent-store";
+    75→import { DEFAULT_VOICE_SPEED, DEFAULT_LANGUAGE, SETTINGS_KEY } from "@/lib/constants";
+    76→import { toast } from "@/hooks/use-toast";
+    77→import { PLUGIN_DEFINITIONS } from "@/lib/plugin-definitions";
+    78→const PluginConfigDialog = lazy(() => import("@/components/plugin-config-dialog"));
+    79→const TeamCollaborationSection = lazy(() => import("@/components/team-collaboration"));
+    80→
+    81→// ─── Types ────────────────────────────────────────────────────────────────
+    82→
+    83→interface SettingsSheetProps {
+    84→  open: boolean;
+    85→  onOpenChange: (open: boolean) => void;
+    86→}
+    87→
+    88→interface TamannaSettings {
+    89→  voiceSpeed: number;
+    90→  ttsAutoplay: boolean;
+    91→  responseLanguage: string;
+    92→}
+    93→
+    94→interface ScheduledTask {
+    95→  id: string;
+    96→  name: string;
+    97→  description: string | null;
+    98→  prompt: string;
+    99→  scheduleType: string;
+   100→  cronExpr: string | null;
+   101→  intervalSec: number | null;
+   102→  runAt: string | null;
+   103→  timezone: string;
+   104→  enabled: boolean;
+   105→  lastRunAt: string | null;
+   106→  nextRunAt: string | null;
+   107→  runCount: number;
+   108→  lastError: string | null;
+   109→  createdAt: string;
+   110→}
+   111→
+   112→interface NewTaskForm {
+   113→  name: string;
+   114→  description: string;
+   115→  prompt: string;
+   116→  scheduleType: "cron" | "fixed_rate" | "one_time";
+   117→  cronExpr: string;
+   118→  intervalMin: number;
+   119→  runAtDate: string;
+   120→  runAtTime: string;
+   121→  timezone: string;
+   122→}
+   123→
+   124→interface PluginItem {
+   125→  id: string;
+   126→  name: string;
+   127→  description: string | null;
+   128→  category: string;
+   129→  type: string;
+   130→  config: Record<string, unknown> | null;
+   131→  status: string;
+   132→  enabled: boolean;
+   133→  lastSyncAt: string | null;
+   134→  metadata?: { icon?: string; color?: string; author?: string; version?: string; requiresOAuth?: boolean; configSchema?: Array<{ key: string; label: string; type: string; required?: boolean }> } | null;
+   135→}
+   136→
+   137→const TIMEZONES = [
+   138→  { value: "Asia/Karachi", label: "Pakistan (PKT)" },
+   139→  { value: "Asia/Kolkata", label: "India (IST)" },
+   140→  { value: "Asia/Dhaka", label: "Bangladesh (BST)" },
+   141→  { value: "Asia/Riyadh", label: "Saudi Arabia (AST)" },
+   142→  { value: "Asia/Dubai", label: "UAE (GST)" },
+   143→  { value: "Europe/London", label: "UK (GMT)" },
+   144→  { value: "Europe/Berlin", label: "Germany (CET)" },
+   145→  { value: "America/New_York", label: "US Eastern (EST)" },
+   146→  { value: "America/Chicago", label: "US Central (CST)" },
+   147→  { value: "America/Los_Angeles", label: "US Pacific (PST)" },
+   148→  { value: "Asia/Tokyo", label: "Japan (JST)" },
+   149→  { value: "Australia/Sydney", label: "Australia (AEST)" },
+   150→];
+   151→
+   152→const CRON_PRESETS = [
+   153→  { label: "Every minute", expr: "* * * * *" },
+   154→  { label: "Every 5 minutes", expr: "*/5 * * * *" },
+   155→  { label: "Every 15 minutes", expr: "*/15 * * * *" },
+   156→  { label: "Every hour", expr: "0 * * * *" },
+   157→  { label: "Daily at midnight", expr: "0 0 * * *" },
+   158→  { label: "Daily at 9 AM", expr: "0 9 * * *" },
+   159→  { label: "Weekly on Monday", expr: "0 9 * * 1" },
+   160→  { label: "Monthly on 1st", expr: "0 9 1 * *" },
+   161→];
+   162→
+   163→// ─── Settings helpers ────────────────────────────────────────────────────
+   164→
+   165→const DEFAULT_SETTINGS: TamannaSettings = {
+   166→  voiceSpeed: DEFAULT_VOICE_SPEED,
+   167→  ttsAutoplay: true,
+   168→  responseLanguage: DEFAULT_LANGUAGE,
+   169→};
+   170→
+   171→const LANGUAGES = [
+   172→  { value: "en", label: "English" },
+   173→  { value: "ur", label: "Urdu" },
+   174→  { value: "hi", label: "Hindi" },
+   175→  { value: "ar", label: "Arabic" },
+   176→];
+   177→
+   178→function loadSettings(): TamannaSettings {
+   179→  try {
+   180→    const raw = localStorage.getItem(SETTINGS_KEY);
+   181→    if (raw) {
+   182→      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+   183→    }
+   184→  } catch {
+   185→    /* ignore parse errors */
+   186→  }
+   187→  return DEFAULT_SETTINGS;
+   188→}
+   189→
+   190→function saveSettings(settings: TamannaSettings) {
+   191→  try {
+   192→    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+   193→  } catch {
+   194→    /* storage full */
+   195→  }
+   196→}
+   197→
+   198→// ─── Component ─────────────────────────────────────────────────────────────
+   199→
+   200→export default function SettingsSheet({
+   201→  open,
+   202→  onOpenChange,
+   203→}: SettingsSheetProps) {
+   204→  const { theme, setTheme } = useTheme();
+   205→  const [settings, setSettings] = useState<TamannaSettings>(loadSettings);
+   206→  const deleteConversation = useAgentStore((s) => s.deleteConversation);
+   207→  const conversations = useAgentStore((s) => s.conversations);
+   208→  const clearAll = useAgentStore((s) => s.clearAll);
+   209→
+   210→  // ─── Scheduled Tasks State ───────────────────────────────────────────
+   211→  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
+   212→  const [tasksLoading, setTasksLoading] = useState(false);
+   213→  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+   214→  const [newTask, setNewTask] = useState<NewTaskForm>({
+   215→    name: "",
+   216→    description: "",
+   217→    prompt: "",
+   218→    scheduleType: "cron",
+   219→    cronExpr: "0 9 * * *",
+   220→    intervalMin: 30,
+   221→    runAtDate: "",
+   222→    runAtTime: "",
+   223→    timezone: "Asia/Karachi",
+   224→  });
+   225→  const [creatingTask, setCreatingTask] = useState(false);
+   226→
+   227→  // ─── Plugins State ────────────────────────────────────────────────
+   228→  const [plugins, setPlugins] = useState<PluginItem[]>([]);
+   229→  const [pluginsLoading, setPluginsLoading] = useState(false);
+   230→  const [pluginsFilter, setPluginsFilter] = useState<string>("all");
+   231→  const [pluginsSearch, setPluginsSearch] = useState("");
+   232→  const [connectingType, setConnectingType] = useState<string | null>(null);
+   233→  const [configuringPlugin, setConfiguringPlugin] = useState<{ type: string; name: string; description: string; icon: React.ElementType; color: string; bgColor: string; category: string; status: string; dbId: string | null } | null>(null);
+   234→
+   235→  const fetchPlugins = useCallback(async () => {
+   236→    setPluginsLoading(true);
+   237→    try {
+   238→      const res = await fetch("/api/plugins");
+   239→      if (res.ok) {
+   240→        const data = await res.json();
+   241→        setPlugins(Array.isArray(data.plugins) ? data.plugins : Array.isArray(data) ? data : []);
+   242→      }
+   243→    } catch { /* ignore */ }
+   244→    finally { setPluginsLoading(false); }
+   245→  }, []);
+   246→
+   247→  const updateSetting = useCallback(
+   248→    <K extends keyof TamannaSettings>(key: K, value: TamannaSettings[K]) => {
+   249→      setSettings((prev) => {
+   250→        const updated = { ...prev, [key]: value };
+   251→        saveSettings(updated);
+   252→        return updated;
+   253→      });
+   254→    },
+   255→    []
+   256→  );
+   257→
+   258→  const handleClearHistory = useCallback(() => {
+   259→    for (const conv of conversations) {
+   260→      deleteConversation(conv.id);
+   261→    }
+   262→    clearAll();
+   263→    onOpenChange(false);
+   264→    toast({
+   265→      title: "History cleared",
+   266→      description: "All conversation history has been deleted.",
+   267→    });
+   268→  }, [conversations, deleteConversation, clearAll, onOpenChange]);
+   269→
+   270→  // ─── Task CRUD ──────────────────────────────────────────────────────
+   271→
+   272→  const fetchTasks = useCallback(async () => {
+   273→    setTasksLoading(true);
+   274→    try {
+   275→      const res = await fetch("/api/scheduled-tasks");
+   276→      if (res.ok) {
+   277→        const data = await res.json();
+   278→        setTasks(data);
+   279→      }
+   280→    } catch {
+   281→      // Silently fail
+   282→    } finally {
+   283→      setTasksLoading(false);
+   284→    }
+   285→  }, []);
+   286→
+   287→  const handleCreateTask = useCallback(async () => {
+   288→    if (!newTask.name.trim() || !newTask.prompt.trim()) {
+   289→      toast({ title: "Missing fields", description: "Name and prompt are required.", variant: "destructive" });
+   290→      return;
+   291→    }
+   292→
+   293→    setCreatingTask(true);
+   294→    try {
+   295→      const body: Record<string, unknown> = {
+   296→        name: newTask.name.trim(),
+   297→        description: newTask.description.trim() || null,
+   298→        prompt: newTask.prompt.trim(),
+   299→        scheduleType: newTask.scheduleType,
+   300→        timezone: newTask.timezone,
+   301→      };
+   302→
+   303→      if (newTask.scheduleType === "cron") {
+   304→        body.cronExpr = newTask.cronExpr;
+   305→      } else if (newTask.scheduleType === "fixed_rate") {
+   306→        body.intervalSec = newTask.intervalMin * 60;
+   307→      } else if (newTask.scheduleType === "one_time") {
+   308→        if (newTask.runAtDate && newTask.runAtTime) {
+   309→          body.runAt = new Date(`${newTask.runAtDate}T${newTask.runAtTime}`).toISOString();
+   310→        }
+   311→      }
+   312→
+   313→      const res = await fetch("/api/scheduled-tasks", {
+   314→        method: "POST",
+   315→        headers: { "Content-Type": "application/json" },
+   316→        body: JSON.stringify(body),
+   317→      });
+   318→
+   319→      if (res.ok) {
+   320→        toast({ title: "Task created", description: `"${newTask.name}" has been scheduled.` });
+   321→        setTaskDialogOpen(false);
+   322→        setNewTask({
+   323→          name: "",
+   324→          description: "",
+   325→          prompt: "",
+   326→          scheduleType: "cron",
+   327→          cronExpr: "0 9 * * *",
+   328→          intervalMin: 30,
+   329→          runAtDate: "",
+   330→          runAtTime: "",
+   331→          timezone: "Asia/Karachi",
+   332→        });
+   333→        fetchTasks();
+   334→      } else {
+   335→        const err = await res.json();
+   336→        toast({ title: "Failed to create task", description: err.error || "Unknown error", variant: "destructive" });
+   337→      }
+   338→    } catch {
+   339→      toast({ title: "Error", description: "Failed to create task", variant: "destructive" });
+   340→    } finally {
+   341→      setCreatingTask(false);
+   342→    }
+   343→  }, [newTask, fetchTasks]);
+   344→
+   345→  const handleToggleTask = useCallback(
+   346→    async (task: ScheduledTask) => {
+   347→      try {
+   348→        await fetch(`/api/scheduled-tasks/${task.id}`, {
+   349→          method: "PATCH",
+   350→          headers: { "Content-Type": "application/json" },
+   351→          body: JSON.stringify({ enabled: !task.enabled }),
+   352→        });
+   353→        toast({
+   354→          title: task.enabled ? "Task paused" : "Task resumed",
+   355→          description: `"${task.name}" is now ${task.enabled ? "paused" : "active"}.`,
+   356→        });
+   357→        fetchTasks();
+   358→      } catch {
+   359→        toast({ title: "Error", description: "Failed to update task", variant: "destructive" });
+   360→      }
+   361→    },
+   362→    [fetchTasks]
+   363→  );
+   364→
+   365→  const handleDeleteTask = useCallback(
+   366→    async (task: ScheduledTask) => {
+   367→      try {
+   368→        await fetch(`/api/scheduled-tasks/${task.id}`, { method: "DELETE" });
+   369→        toast({ title: "Task deleted", description: `"${task.name}" has been removed.` });
+   370→        fetchTasks();
+   371→      } catch {
+   372→        toast({ title: "Error", description: "Failed to delete task", variant: "destructive" });
+   373→      }
+   374→    },
+   375→    [fetchTasks]
+   376→  );
+   377→
+   378→  // ─── Plugin actions ─────────────────────────────────────────────
+   379→  const mergedPlugins = (() => {
+   380→    return PLUGIN_DEFINITIONS.map((def) => {
+   381→      const existing = plugins.find((p) => p.type === def.type && p.category === def.category);
+   382→      return { ...def, status: existing?.status || "disconnected", dbId: existing?.id || null };
+   383→    });
+   384→  })();
+   385→
+   386→  const filteredPlugins = (() => {
+   387→    return mergedPlugins.filter((p) => {
+   388→      const matchesCat = pluginsFilter === "all" || p.category === pluginsFilter;
+   389→      const q = pluginsSearch.toLowerCase();
+   390→      const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q);
+   391→      return matchesCat && matchesSearch;
+   392→    });
+   393→  })();
+   394→
+   395→  const handlePluginToggle = useCallback(async (plugin: typeof mergedPlugins[0]) => {
+   396→    setConnectingType(plugin.type);
+   397→    try {
+   398→      const dbPlugin = plugins.find((p) => p.type === plugin.type);
+   399→      if (!dbPlugin) {
+   400→        // Plugin not yet in DB — create it first
+   401→        const createRes = await fetch("/api/plugins", {
+   402→          method: "POST",
+   403→          headers: { "Content-Type": "application/json" },
+   404→          body: JSON.stringify({ name: plugin.name, description: plugin.description, category: plugin.category, type: plugin.type }),
+   405→        });
+   406→        if (!createRes.ok) {
+   407→          toast({ title: "Error", description: `Failed to create ${plugin.name}`, variant: "destructive" });
+   408→          return;
+   409→        }
+   410→        const created = await createRes.json();
+   411→        // Now connect it
+   412→        await fetch(`/api/plugins/${created.id}/connect`, { method: "POST" });
+   413→        toast({ title: `${plugin.name} connected` });
+   414→      } else if (plugin.status === "connected") {
+   415→        // Disconnect using real endpoint
+   416→        await fetch(`/api/plugins/${dbPlugin.id}/disconnect`, { method: "POST" });
+   417→        toast({ title: `${plugin.name} disconnected` });
+   418→      } else {
+   419→        // Connect using real endpoint
+   420→        await fetch(`/api/plugins/${dbPlugin.id}/connect`, { method: "POST" });
+   421→        toast({ title: `${plugin.name} connected` });
+   422→      }
+   423→      fetchPlugins();
+   424→    } catch {
+   425→      toast({ title: "Error", description: `Failed to update ${plugin.name}`, variant: "destructive" });
+   426→    } finally {
+   427→      setConnectingType(null);
+   428→    }
+   429→  }, [plugins, fetchPlugins]);
+   430→
+   431→  const handlePluginConfigSave = useCallback((type: string) => {
+   432→    // Re-fetch plugins after config save
+   433→    fetchPlugins();
+   434→  }, [fetchPlugins]);
+   435→
+   436→  const handleOpenChange = useCallback(
+   437→    (isOpen: boolean) => {
+   438→      if (isOpen) {
+   439→        setSettings(loadSettings());
+   440→        fetchTasks();
+   441→        fetchPlugins();
+   442→        setConfiguringPlugin(null);
+   443→      }
+   444→      onOpenChange(isOpen);
+   445→    },
+   446→    [onOpenChange, fetchTasks, fetchPlugins]
+   447→  );
+   448→
+   449→  return (
+   450→    <Sheet open={open} onOpenChange={handleOpenChange}>
+   451→      <SheetContent
+   452→        side="right"
+   453→        className="glass-card overflow-y-auto border-l border-white/20 dark:border-white/10 sm:max-w-md"
+   454→      >
+   455→        <SheetHeader className="pb-2">
+   456→          <SheetTitle className="flex items-center gap-2 text-lumina-primary font-[family-name:var(--font-display)] text-xl">
+   457→            <Settings className="w-5 h-5" />
+   458→            Settings
+   459→          </SheetTitle>
+   460→          <SheetDescription className="text-lumina-on-surface-variant font-[family-name:var(--font-body)]">
+   461→            Customize your Tamanna experience
+   462→          </SheetDescription>
+   463→        </SheetHeader>
+   464→
+   465→        <div className="flex flex-col gap-5 mt-2 px-4 pb-6 font-[family-name:var(--font-body)]">
+   466→          {/* ── Theme Toggle ──────────────────────────────── */}
+   467→          <section>
+   468→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+   469→              <Sun className="w-4 h-4 text-lumina-primary" />
+   470→              Theme
+   471→            </Label>
+   472→            <div className="glass-pill rounded-xl p-3 flex items-center gap-3">
+   473→              <div className="flex gap-1 bg-lumina-surface-variant/30 rounded-lg p-1">
+   474→                {[
+   475→                  { value: "light", icon: Sun, label: "Light" },
+   476→                  { value: "dark", icon: Moon, label: "Dark" },
+   477→                  { value: "system", icon: Monitor, label: "System" },
+   478→                ].map((option) => (
+   479→                  <button
+   480→                    key={option.value}
+   481→                    onClick={() => setTheme(option.value)}
+   482→                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+   483→                      theme === option.value
+   484→                        ? "bg-lumina-primary text-lumina-on-primary shadow-sm"
+   485→                        : "text-lumina-on-surface-variant hover:text-lumina-primary hover:bg-lumina-surface-variant/50"
+   486→                    }`}
+   487→                    aria-label={`${option.label} theme`}
+   488→                  >
+   489→                    <option.icon className="w-3.5 h-3.5" />
+   490→                    {option.label}
+   491→                  </button>
+   492→                ))}
+   493→              </div>
+   494→            </div>
+   495→          </section>
+   496→
+   497→          <Separator className="bg-lumina-outline-variant/40" />
+   498→
+   499→          {/* ── Voice Speed ──────────────────────────────── */}
+   500→          <section>
+   501→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+   502→              <Volume2 className="w-4 h-4 text-lumina-primary" />
+   503→              Voice Speed
+   504→            </Label>
+   505→            <div className="glass-pill rounded-xl p-4">
+   506→              <div className="flex items-center justify-between mb-2">
+   507→                <span className="text-xs text-lumina-on-surface-variant">Slow</span>
+   508→                <span className="text-sm font-semibold text-lumina-primary tabular-nums">
+   509→                  {settings.voiceSpeed.toFixed(2)}x
+   510→                </span>
+   511→                <span className="text-xs text-lumina-on-surface-variant">Fast</span>
+   512→              </div>
+   513→              <Slider
+   514→                min={0.5}
+   515→                max={2.0}
+   516→                step={0.05}
+   517→                value={[settings.voiceSpeed]}
+   518→                onValueChange={(val) => updateSetting("voiceSpeed", val[0])}
+   519→                className="py-2"
+   520→              />
+   521→            </div>
+   522→          </section>
+   523→
+   524→          <Separator className="bg-lumina-outline-variant/40" />
+   525→
+   526→          {/* ── TTS Auto-play ────────────────────────────── */}
+   527→          <section>
+   528→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+   529→              <Volume2 className="w-4 h-4 text-lumina-primary" />
+   530→              TTS Auto-play
+   531→            </Label>
+   532→            <div className="glass-pill rounded-xl p-3 flex items-center justify-between">
+   533→              <span className="text-sm text-lumina-on-surface-variant">
+   534→                Automatically play voice responses
+   535→              </span>
+   536→              <Switch
+   537→                checked={settings.ttsAutoplay}
+   538→                onCheckedChange={(checked) => updateSetting("ttsAutoplay", checked)}
+   539→              />
+   540→            </div>
+   541→          </section>
+   542→
+   543→          <Separator className="bg-lumina-outline-variant/40" />
+   544→
+   545→          {/* ── Response Language ────────────────────────── */}
+   546→          <section>
+   547→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+   548→              <Languages className="w-4 h-4 text-lumina-primary" />
+   549→              Response Language
+   550→            </Label>
+   551→            <div className="glass-pill rounded-xl p-3">
+   552→              <Select
+   553→                value={settings.responseLanguage}
+   554→                onValueChange={(val) => updateSetting("responseLanguage", val)}
+   555→              >
+   556→                <SelectTrigger className="w-full bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface font-[family-name:var(--font-body)]">
+   557→                  <SelectValue placeholder="Select language" />
+   558→                </SelectTrigger>
+   559→                <SelectContent className="glass-card border-lumina-outline-variant/40">
+   560→                  {LANGUAGES.map((lang) => (
+   561→                    <SelectItem
+   562→                      key={lang.value}
+   563→                      value={lang.value}
+   564→                      className="text-lumina-on-surface font-[family-name:var(--font-body)] focus:bg-lumina-primary/10 focus:text-lumina-primary"
+   565→                    >
+   566→                      {lang.label}
+   567→                    </SelectItem>
+   568→                  ))}
+   569→                </SelectContent>
+   570→              </Select>
+   571→            </div>
+   572→          </section>
+   573→
+   574→          <Separator className="bg-lumina-outline-variant/40" />
+   575→
+   576→          {/* ── Scheduled Tasks ──────────────────────────── */}
+   577→          <section>
+   578→            <div className="flex items-center justify-between mb-3">
+   579→              <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2">
+   580→                <CalendarClock className="w-4 h-4 text-lumina-primary" />
+   581→                Scheduled Tasks
+   582→                {tasks.length > 0 && (
+   583→                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-lumina-primary/10 text-lumina-primary tabular-nums">
+   584→                    {tasks.length}
+   585→                  </span>
+   586→                )}
+   587→              </Label>
+   588→
+   589→              <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
+   590→                <DialogTrigger asChild>
+   591→                  <Button
+   592→                    size="sm"
+   593→                    className="h-7 px-2.5 text-xs font-medium bg-lumina-primary text-lumina-on-primary hover:bg-lumina-primary/90 rounded-lg gap-1"
+   594→                  >
+   595→                    <Plus className="w-3.5 h-3.5" />
+   596→                    New
+   597→                  </Button>
+   598→                </DialogTrigger>
+   599→                <DialogContent className="glass-card border-lumina-outline-variant/40 sm:max-w-lg max-h-[85vh] overflow-y-auto">
+   600→                  <DialogHeader>
+   601→                    <DialogTitle className="font-[family-name:var(--font-display)] text-lumina-on-surface flex items-center gap-2">
+   602→                      <CalendarClock className="w-5 h-5 text-lumina-primary" />
+   603→                      Create Scheduled Task
+   604→                    </DialogTitle>
+   605→                    <DialogDescription className="text-lumina-on-surface-variant font-[family-name:var(--font-body)]">
+   606→                      Schedule Tamanna to run tasks automatically on a recurring basis.
+   607→                    </DialogDescription>
+   608→                  </DialogHeader>
+   609→
+   610→                  <div className="flex flex-col gap-4 mt-4 font-[family-name:var(--font-body)]">
+   611→                    {/* Task Name */}
+   612→                    <div>
+   613→                      <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Task Name *</Label>
+   614→                      <Input
+   615→                        placeholder="e.g. Daily briefing"
+   616→                        value={newTask.name}
+   617→                        onChange={(e) => setNewTask((p) => ({ ...p, name: e.target.value }))}
+   618→                        className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm"
+   619→                      />
+   620→                    </div>
+   621→
+   622→                    {/* Description */}
+   623→                    <div>
+   624→                      <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Description</Label>
+   625→                      <Input
+   626→                        placeholder="Optional description"
+   627→                        value={newTask.description}
+   628→                        onChange={(e) => setNewTask((p) => ({ ...p, description: e.target.value }))}
+   629→                        className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm"
+   630→                      />
+   631→                    </div>
+   632→
+   633→                    {/* Prompt */}
+   634→                    <div>
+   635→                      <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Prompt / Message *</Label>
+   636→                      <Textarea
+   637→                        placeholder="What should Tamanna do? e.g. Give me a summary of today's news"
+   638→                        value={newTask.prompt}
+   639→                        onChange={(e) => setNewTask((p) => ({ ...p, prompt: e.target.value }))}
+   640→                        rows={3}
+   641→                        className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm resize-none"
+   642→                      />
+   643→                    </div>
+   644→
+   645→                    {/* Schedule Type */}
+   646→                    <div>
+   647→                      <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Schedule Type</Label>
+   648→                      <div className="flex gap-1 bg-lumina-surface-variant/30 rounded-lg p-1">
+   649→                        {[
+   650→                          { value: "cron" as const, label: "Recurring", icon: Repeat },
+   651→                          { value: "fixed_rate" as const, label: "Interval", icon: Timer },
+   652→                          { value: "one_time" as const, label: "One-time", icon: CalendarClock },
+   653→                        ].map((opt) => (
+   654→                          <button
+   655→                            key={opt.value}
+   656→                            onClick={() => setNewTask((p) => ({ ...p, scheduleType: opt.value }))}
+   657→                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 flex-1 justify-center cursor-pointer ${
+   658→                              newTask.scheduleType === opt.value
+   659→                                ? "bg-lumina-primary text-lumina-on-primary shadow-sm"
+   660→                                : "text-lumina-on-surface-variant hover:text-lumina-primary hover:bg-lumina-surface-variant/50"
+   661→                            }`}
+   662→                          >
+   663→                            <opt.icon className="w-3.5 h-3.5" />
+   664→                            {opt.label}
+   665→                          </button>
+   666→                        ))}
+   667→                      </div>
+   668→                    </div>
+   669→
+   670→                    {/* Cron Expression */}
+   671→                    {newTask.scheduleType === "cron" && (
+   672→                      <div>
+   673→                        <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Cron Expression</Label>
+   674→                        <Input
+   675→                          placeholder="* * * * *"
+   676→                          value={newTask.cronExpr}
+   677→                          onChange={(e) => setNewTask((p) => ({ ...p, cronExpr: e.target.value }))}
+   678→                          className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm font-mono"
+   679→                        />
+   680→                        <div className="flex flex-wrap gap-1 mt-2">
+   681→                          {CRON_PRESETS.map((preset) => (
+   682→                            <button
+   683→                              key={preset.expr}
+   684→                              onClick={() => setNewTask((p) => ({ ...p, cronExpr: preset.expr }))}
+   685→                              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all duration-200 cursor-pointer ${
+   686→                                newTask.cronExpr === preset.expr
+   687→                                  ? "bg-lumina-primary/15 text-lumina-primary"
+   688→                                  : "glass-pill text-lumina-on-surface-variant/60 hover:text-lumina-on-surface hover:bg-lumina-primary/10"
+   689→                              }`}
+   690→                            >
+   691→                              {preset.label}
+   692→                            </button>
+   693→                          ))}
+   694→                        </div>
+   695→                      </div>
+   696→                    )}
+   697→
+   698→                    {/* Fixed Rate */}
+   699→                    {newTask.scheduleType === "fixed_rate" && (
+   700→                      <div>
+   701→                        <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Interval</Label>
+   702→                        <div className="flex items-center gap-2">
+   703→                          <Input
+   704→                            type="number"
+   705→                            min={1}
+   706→                            max={10080}
+   707→                            value={newTask.intervalMin}
+   708→                            onChange={(e) => setNewTask((p) => ({ ...p, intervalMin: Number(e.target.value) || 1 }))}
+   709→                            className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm w-24"
+   710→                          />
+   711→                          <span className="text-xs text-lumina-on-surface-variant">minutes</span>
+   712→                        </div>
+   713→                        <div className="flex flex-wrap gap-1 mt-2">
+   714→                          {[5, 15, 30, 60, 120, 360, 1440].map((mins) => (
+   715→                            <button
+   716→                              key={mins}
+   717→                              onClick={() => setNewTask((p) => ({ ...p, intervalMin: mins }))}
+   718→                              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all duration-200 cursor-pointer ${
+   719→                                newTask.intervalMin === mins
+   720→                                  ? "bg-lumina-primary/15 text-lumina-primary"
+   721→                                  : "glass-pill text-lumina-on-surface-variant/60 hover:text-lumina-on-surface hover:bg-lumina-primary/10"
+   722→                              }`}
+   723→                            >
+   724→                              {mins < 60 ? `${mins}m` : `${mins / 60}h`}
+   725→                            </button>
+   726→                          ))}
+   727→                        </div>
+   728→                      </div>
+   729→                    )}
+   730→
+   731→                    {/* One-time */}
+   732→                    {newTask.scheduleType === "one_time" && (
+   733→                      <div>
+   734→                        <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Run At</Label>
+   735→                        <div className="flex items-center gap-2">
+   736→                          <Input
+   737→                            type="date"
+   738→                            value={newTask.runAtDate}
+   739→                            onChange={(e) => setNewTask((p) => ({ ...p, runAtDate: e.target.value }))}
+   740→                            className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm flex-1"
+   741→                          />
+   742→                          <Input
+   743→                            type="time"
+   744→                            value={newTask.runAtTime}
+   745→                            onChange={(e) => setNewTask((p) => ({ ...p, runAtTime: e.target.value }))}
+   746→                            className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm flex-1"
+   747→                          />
+   748→                        </div>
+   749→                      </div>
+   750→                    )}
+   751→
+   752→                    {/* Timezone */}
+   753→                    <div>
+   754→                      <Label className="text-xs text-lumina-on-surface-variant mb-1 block">Timezone</Label>
+   755→                      <Select
+   756→                        value={newTask.timezone}
+   757→                        onValueChange={(val) => setNewTask((p) => ({ ...p, timezone: val }))}
+   758→                      >
+   759→                        <SelectTrigger className="w-full bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface text-sm">
+   760→                          <SelectValue />
+   761→                        </SelectTrigger>
+   762→                        <SelectContent className="glass-card border-lumina-outline-variant/40">
+   763→                          {TIMEZONES.map((tz) => (
+   764→                            <SelectItem key={tz.value} value={tz.value} className="text-sm">
+   765→                              {tz.label}
+   766→                            </SelectItem>
+   767→                          ))}
+   768→                        </SelectContent>
+   769→                      </Select>
+   770→                    </div>
+   771→
+   772→                    {/* Create Button */}
+   773→                    <Button
+   774→                      onClick={handleCreateTask}
+   775→                      disabled={creatingTask || !newTask.name.trim() || !newTask.prompt.trim()}
+   776→                      className="w-full bg-lumina-primary text-lumina-on-primary hover:bg-lumina-primary/90 font-medium gap-2"
+   777→                    >
+   778→                      {creatingTask ? (
+   779→                        <RefreshCw className="w-4 h-4 animate-spin" />
+   780→                      ) : (
+   781→                        <CalendarClock className="w-4 h-4" />
+   782→                      )}
+   783→                      {creatingTask ? "Creating..." : "Create Scheduled Task"}
+   784→                    </Button>
+   785→                  </div>
+   786→                </DialogContent>
+   787→              </Dialog>
+   788→            </div>
+   789→
+   790→            {/* Task List */}
+   791→            <div className="space-y-2">
+   792→              {tasksLoading ? (
+   793→                <div className="flex items-center justify-center py-6">
+   794→                  <RefreshCw className="w-4 h-4 text-lumina-primary animate-spin" />
+   795→                </div>
+   796→              ) : tasks.length === 0 ? (
+   797→                <div className="glass-pill rounded-xl p-6 text-center">
+   798→                  <Clock className="w-8 h-8 text-lumina-on-surface-variant/20 mx-auto mb-2" />
+   799→                  <p className="text-xs text-lumina-on-surface-variant/50">
+   800→                    No scheduled tasks yet
+   801→                  </p>
+   802→                  <p className="text-[10px] text-lumina-on-surface-variant/30 mt-1">
+   803→                    Create one to automate recurring prompts
+   804→                  </p>
+   805→                </div>
+   806→              ) : (
+   807→                tasks.map((task) => (
+   808→                  <div
+   809→                    key={task.id}
+   810→                    className={`glass-card rounded-xl p-3 transition-all duration-200 ${!task.enabled ? "opacity-50" : ""}`}
+   811→                  >
+   812→                    <div className="flex items-start justify-between mb-1.5">
+   813→                      <div className="flex items-center gap-2 min-w-0">
+   814→                        <ScheduleTypeIcon type={task.scheduleType} className="w-4 h-4 text-lumina-primary shrink-0" />
+   815→                        <div className="min-w-0">
+   816→                          <h4 className="text-sm font-semibold text-lumina-on-surface truncate">
+   817→                            {task.name}
+   818→                          </h4>
+   819→                          {task.description && (
+   820→                            <p className="text-[10px] text-lumina-on-surface-variant/60 truncate">
+   821→                              {task.description}
+   822→                            </p>
+   823→                          )}
+   824→                        </div>
+   825→                      </div>
+   826→                      <div className="flex items-center gap-1 shrink-0">
+   827→                        <button
+   828→                          onClick={() => handleToggleTask(task)}
+   829→                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+   830→                            task.enabled
+   831→                              ? "text-lumina-primary hover:bg-lumina-primary/10"
+   832→                              : "text-lumina-on-surface-variant/40 hover:bg-lumina-surface-variant/30"
+   833→                          }`}
+   834→                          aria-label={task.enabled ? "Pause task" : "Resume task"}
+   835→                        >
+   836→                          {task.enabled ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+   837→                        </button>
+   838→                        <button
+   839→                          onClick={() => handleDeleteTask(task)}
+   840→                          className="p-1.5 rounded-lg text-red-400/60 hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+   841→                          aria-label="Delete task"
+   842→                        >
+   843→                          <Trash className="w-3.5 h-3.5" />
+   844→                        </button>
+   845→                      </div>
+   846→                    </div>
+   847→
+   848→                    <p className="text-[11px] text-lumina-on-surface-variant/50 font-mono truncate mb-1.5">
+   849→                      {formatScheduleDesc(task)}
+   850→                    </p>
+   851→
+   852→                    <div className="flex items-center gap-3 text-[10px] text-lumina-on-surface-variant/40">
+   853→                      {task.lastRunAt && (
+   854→                        <span className="flex items-center gap-0.5">
+   855→                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+   856→                          Last: {formatRelativeTime(task.lastRunAt)}
+   857→                        </span>
+   858→                      )}
+   859→                      <span className="flex items-center gap-0.5">
+   860→                        <Repeat className="w-3 h-3" />
+   861→                        {task.runCount} run{task.runCount !== 1 ? "s" : ""}
+   862→                      </span>
+   863→                      {task.nextRunAt && task.enabled && (
+   864→                        <span className="flex items-center gap-0.5">
+   865→                          <CalendarClock className="w-3 h-3" />
+   866→                          Next: {formatRelativeTime(task.nextRunAt)}
+   867→                        </span>
+   868→                      )}
+   869→                      {task.lastError && (
+   870→                        <span className="flex items-center gap-0.5 text-red-500">
+   871→                          <AlertCircle className="w-3 h-3" />
+   872→                          Error
+   873→                        </span>
+   874→                      )}
+   875→                    </div>
+   876→                  </div>
+   877→                ))
+   878→              )}
+   879→            </div>
+   880→          </section>
+   881→
+   882→          <Separator className="bg-lumina-outline-variant/40" />
+   883→
+   884→          {/* ── Plugins ──────────────────────────────────── */}
+   885→          <section>
+   886→            <div className="flex items-center justify-between mb-3">
+   887→              <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2">
+   888→                <Plug className="w-4 h-4 text-lumina-primary" />
+   889→                Plugins
+   890→                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-lumina-primary/10 text-lumina-primary tabular-nums">
+   891→                  {mergedPlugins.filter((p) => p.status === "connected").length}/{mergedPlugins.length}
+   892→                </span>
+   893→              </Label>
+   894→            </div>
+   895→
+   896→            {/* Category filter tabs */}
+   897→            <div className="flex gap-1 mb-2 overflow-x-auto pb-1 -mx-1 px-1">
+   898→              {[
+   899→                { value: "all", label: "All", icon: Plug },
+   900→                { value: "connector", label: "Connectors", icon: Link2 },
+   901→                { value: "skill", label: "Skills", icon: Zap },
+   902→                { value: "data_source", label: "Data Sources", icon: Database },
+   903→              ].map((cat) => (
+   904→                <button
+   905→                  key={cat.value}
+   906→                  onClick={() => setPluginsFilter(cat.value)}
+   907→                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium whitespace-nowrap transition-all duration-200 cursor-pointer shrink-0 ${
+   908→                    pluginsFilter === cat.value
+   909→                      ? "bg-lumina-primary text-lumina-on-primary shadow-sm"
+   910→                      : "glass-pill text-lumina-on-surface-variant hover:text-lumina-on-surface hover:bg-white/60 dark:hover:bg-white/10"
+   911→                  }`}
+   912→                >
+   913→                  <cat.icon className="w-3 h-3" />
+   914→                  {cat.label}
+   915→                </button>
+   916→              ))}
+   917→            </div>
+   918→
+   919→            {/* Search */}
+   920→            <div className="relative mb-3">
+   921→              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-lumina-on-surface-variant/40 pointer-events-none" />
+   922→              <input
+   923→                type="text"
+   924→                placeholder="Search plugins..."
+   925→                value={pluginsSearch}
+   926→                onChange={(e) => setPluginsSearch(e.target.value)}
+   927→                className="w-full h-8 pl-8 pr-7 rounded-lg bg-lumina-surface-variant/20 border border-lumina-outline-variant/20 font-[family-name:var(--font-body)] text-xs text-lumina-on-surface placeholder:text-lumina-on-surface-variant/40 focus:outline-none focus:ring-2 focus:ring-lumina-primary/30 transition-all duration-200"
+   928→              />
+   929→              {pluginsSearch && (
+   930→                <button
+   931→                  onClick={() => setPluginsSearch("")}
+   932→                  className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-lumina-on-surface-variant/10 flex items-center justify-center hover:bg-lumina-on-surface-variant/20 transition-colors cursor-pointer"
+   933→                >
+   934→                  <X className="w-2.5 h-2.5 text-lumina-on-surface-variant/60" />
+   935→                </button>
+   936→              )}
+   937→            </div>
+   938→
+   939→            {/* Plugin list */}
+   940→            <div className="space-y-1.5 max-h-[40vh] overflow-y-auto pr-1 custom-scrollbar">
+   941→              {pluginsLoading ? (
+   942→                <div className="flex items-center justify-center py-8">
+   943→                  <RefreshCw className="w-5 h-5 text-lumina-primary animate-spin" />
+   944→                </div>
+   945→              ) : filteredPlugins.length === 0 ? (
+   946→                <div className="glass-pill rounded-xl p-4 text-center">
+   947→                  <Search className="w-6 h-6 text-lumina-on-surface-variant/20 mx-auto mb-1" />
+   948→                  <p className="text-[11px] text-lumina-on-surface-variant/50">No plugins found</p>
+   949→                </div>
+   950→              ) : (
+   951→                filteredPlugins.map((plugin) => {
+   952→                  const isConnected = plugin.status === "connected";
+   953→                  const Icon = plugin.icon;
+   954→                  return (
+   955→                    <div
+   956→                      key={`${plugin.category}-${plugin.type}`}
+   957→                      className={`flex items-center gap-2.5 p-2 rounded-xl transition-all duration-200 ${isConnected ? "bg-lumina-primary/5 ring-1 ring-lumina-primary/10" : "hover:bg-lumina-surface-variant/20"}`}
+   958→                    >
+   959→                      <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${plugin.bgColor}`}>
+   960→                        <Icon className={`w-4 h-4 ${plugin.color}`} />
+   961→                      </div>
+   962→                      <div className="flex-1 min-w-0">
+   963→                        <div className="flex items-center gap-1.5">
+   964→                          <h4 className="text-xs font-semibold text-lumina-on-surface truncate">{plugin.name}</h4>
+   965→                          {isConnected && (
+   966→                            <span className="inline-flex items-center gap-0.5 px-1 py-px rounded-full text-[8px] font-medium bg-emerald-500/10 text-emerald-600">
+   967→                              <CheckCircle2 className="w-2 h-2" />
+   968→                              Active
+   969→                            </span>
+   970→                          )}
+   971→                        </div>
+   972→                        <p className="text-[10px] text-lumina-on-surface-variant/50 truncate">{plugin.description}</p>
+   973→                      </div>
+   974→                      <div className="shrink-0 flex items-center gap-1">
+   975→                        <button
+   976→                          onClick={() => setConfiguringPlugin(plugin)}
+   977→                          className="flex items-center gap-0.5 px-2 py-1 rounded-full text-[10px] font-medium text-lumina-on-surface-variant/60 hover:text-lumina-primary hover:bg-lumina-primary/10 transition-all duration-200 cursor-pointer"
+   978→                          title="Configure"
+   979→                        >
+   980→                          <Settings className="w-3 h-3" />
+   981→                        </button>
+   982→                        <button
+   983→                          onClick={() => handlePluginToggle(plugin)}
+   984→                          disabled={connectingType === plugin.type}
+   985→                          className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all duration-200 cursor-pointer ${
+   986→                            connectingType === plugin.type
+   987→                              ? "text-lumina-on-surface-variant/40"
+   988→                              : isConnected
+   989→                              ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+   990→                              : "text-lumina-primary bg-lumina-primary/10 hover:bg-lumina-primary/20"
+   991→                          }`}
+   992→                        >
+   993→                          {connectingType === plugin.type ? (
+   994→                            <RefreshCw className="w-3 h-3 animate-spin" />
+   995→                          ) : (
+   996→                            <>
+   997→                              {isConnected ? <XCircle className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+   998→                              {isConnected ? "Off" : plugin.category === "skill" ? "On" : "Link"}
+   999→                            </>
+  1000→                          )}
+  1001→                        </button>
+  1002→                      </div>
+  1003→                    </div>
+  1004→                  );
+  1005→                })
+  1006→              )}
+  1007→            </div>
+  1008→          </section>
+  1009→
+  1010→          <Separator className="bg-lumina-outline-variant/40" />
+  1011→
+  1012→          {/* Plugin Config Dialog */}
+  1013→          {configuringPlugin && (
+  1014→            <Suspense fallback={null}>
+  1015→              <PluginConfigDialog
+  1016→              open={!!configuringPlugin}
+  1017→              onOpenChange={(open) => { if (!open) setConfiguringPlugin(null); }}
+  1018→              plugin={configuringPlugin}
+  1019→              savedConfig={plugins.find((p) => p.type === configuringPlugin.type && p.category === configuringPlugin.category)?.config || {}}
+  1020→              onSave={() => handlePluginConfigSave(configuringPlugin.type)}
+  1021→            />
+  1022→            </Suspense>
+  1023→          )}
+  1024→
+  1025→          <Separator className="bg-lumina-outline-variant/40" />
+  1026→
+  1027→          {/* ── Team Collaboration ────────────────────────────── */}
+  1028→          <section>
+  1029→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+  1030→              <Users className="w-4 h-4 text-emerald-500" />
+  1031→              Team Collaboration
+  1032→            </Label>
+  1033→            <div className="glass-pill rounded-xl p-4">
+  1034→              <Suspense fallback={
+  1035→                <div className="flex items-center justify-center py-8">
+  1036→                  <div className="w-5 h-5 rounded-full border-2 border-lumina-primary/30 border-t-emerald-500 animate-spin" />
+  1037→                </div>
+  1038→              }>
+  1039→                <TeamCollaborationSection />
+  1040→              </Suspense>
+  1041→            </div>
+  1042→          </section>
+  1043→
+  1044→          <Separator className="bg-lumina-outline-variant/40" />
+  1045→
+  1046→          {/* ── Clear History ────────────────────────────── */}
+  1047→          <section>
+  1048→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+  1049→              <Trash2 className="w-4 h-4 text-lumina-primary" />
+  1050→              Data
+  1051→            </Label>
+  1052→            <AlertDialog>
+  1053→              <AlertDialogTrigger asChild>
+  1054→                <Button
+  1055→                  variant="outline"
+  1056→                  className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive font-[family-name:var(--font-body)] transition-all duration-200"
+  1057→                >
+  1058→                  <Trash2 className="w-4 h-4 mr-2" />
+  1059→                  Clear Conversation History
+  1060→                </Button>
+  1061→              </AlertDialogTrigger>
+  1062→              <AlertDialogContent className="glass-card border-lumina-outline-variant/40">
+  1063→                <AlertDialogHeader>
+  1064→                  <AlertDialogTitle className="font-[family-name:var(--font-display)] text-lumina-on-surface">
+  1065→                    Clear all conversations?
+  1066→                  </AlertDialogTitle>
+  1067→                  <AlertDialogDescription className="text-lumina-on-surface-variant font-[family-name:var(--font-body)]">
+  1068→                    This will permanently delete all your conversation history.
+  1069→                    This action cannot be undone.
+  1070→                  </AlertDialogDescription>
+  1071→                </AlertDialogHeader>
+  1072→                <AlertDialogFooter>
+  1073→                  <AlertDialogCancel className="font-[family-name:var(--font-body)]">
+  1074→                    Cancel
+  1075→                  </AlertDialogCancel>
+  1076→                  <AlertDialogAction
+  1077→                    onClick={handleClearHistory}
+  1078→                    className="bg-destructive text-white hover:bg-destructive/90 font-[family-name:var(--font-body)]"
+  1079→                  >
+  1080→                    Delete All
+  1081→                  </AlertDialogAction>
+  1082→                </AlertDialogFooter>
+  1083→              </AlertDialogContent>
+  1084→            </AlertDialog>
+  1085→          </section>
+  1086→
+  1087→          <Separator className="bg-lumina-outline-variant/40" />
+  1088→
+  1089→          {/* ── About Section ─────────────────────────────── */}
+  1090→          <section className="glass-pill rounded-xl p-4">
+  1091→            <div className="flex items-start gap-3">
+  1092→              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-lumina-primary/10 shrink-0">
+  1093→                <Info className="w-5 h-5 text-lumina-primary" />
+  1094→              </div>
+  1095→              <div>
+  1096→                <h3 className="font-[family-name:var(--font-display)] font-semibold text-lumina-on-surface text-sm">
+  1097→                  Tamanna — AI Voice Assistant
+  1098→                </h3>
+  1099→                <p className="text-xs text-lumina-on-surface-variant mt-1 leading-relaxed">
+  1100→                  A sophisticated voice interface that feels alive yet
+  1101→                  unobtrusive. Powered by intelligent design for natural,
+  1102→                  fluid conversations.
+  1103→                </p>
+  1104→              </div>
+  1105→            </div>
+  1106→          </section>
+  1107→        </div>
+  1108→      </SheetContent>
+  1109→    </Sheet>
+  1110→  );
+  1111→}
+  1112→
+  1113→// ─── Helpers ───────────────────────────────────────────────────────────────
+  1114→
+  1115→function ScheduleTypeIcon({ type, className }: { type: string; className?: string }) {
+  1116→  switch (type) {
+  1117→    case "cron":
+  1118→      return <Repeat className={className} />;
+  1119→    case "fixed_rate":
+  1120→      return <Timer className={className} />;
+  1121→    case "one_time":
+  1122→      return <CalendarClock className={className} />;
+  1123→    default:
+  1124→      return <Clock className={className} />;
+  1125→  }
+  1126→}
+  1127→
+  1128→function formatScheduleDesc(task: ScheduledTask): string {
+  1129→  if (task.scheduleType === "cron" && task.cronExpr) {
+  1130→    return `cron: ${task.cronExpr} (${task.timezone})`;
+  1131→  }
+  1132→  if (task.scheduleType === "fixed_rate" && task.intervalSec) {
+  1133→    const mins = task.intervalSec / 60;
+  1134→    if (mins < 60) return `every ${mins} minute${mins !== 1 ? "s" : ""}`;
+  1135→    const hrs = mins / 60;
+  1136→    if (hrs < 24) return `every ${hrs} hour${hrs !== 1 ? "s" : ""}`;
+  1137→    return `every ${(hrs / 24).toFixed(1)} days`;
+  1138→  }
+  1139→  if (task.scheduleType === "one_time" && task.runAt) {
+  1140→    return `once at ${new Date(task.runAt).toLocaleString()} (${task.timezone})`;
+  1141→  }
+  1142→  return task.scheduleType;
+  1143→}
+  1144→
+  1145→function formatRelativeTime(isoStr: string): string {
+  1146→  const diff = Date.now() - new Date(isoStr).getTime();
+  1147→  const mins = Math.floor(diff / 60000);
+  1148→  if (mins < 1) return "just now";
+  1149→  if (mins < 60) return `${mins}m ago`;
+  1150→  const hours = Math.floor(mins / 60);
+  1151→  if (hours < 24) return `${hours}h ago`;
+  1152→  const days = Math.floor(hours / 24);
+  1153→  return `${days}d ago`;
+  1154→}
+  1155→

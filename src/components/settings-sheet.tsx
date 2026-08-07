@@ -30,6 +30,13 @@ import {
   Search,
   X,
   Users,
+  Globe,
+  Bell,
+  Smartphone,
+  Heart,
+  Shield,
+  FileText,
+  Mic,
 } from "lucide-react";
 import {
   Sheet,
@@ -89,6 +96,12 @@ interface TamannaSettings {
   voiceSpeed: number;
   ttsAutoplay: boolean;
   responseLanguage: string;
+  ttsEngine: string;
+  voiceLanguage: string;
+  accentColor: string;
+  soundEffects: boolean;
+  vibration: boolean;
+  autoRead: boolean;
 }
 
 interface ScheduledTask {
@@ -166,6 +179,12 @@ const DEFAULT_SETTINGS: TamannaSettings = {
   voiceSpeed: DEFAULT_VOICE_SPEED,
   ttsAutoplay: true,
   responseLanguage: DEFAULT_LANGUAGE,
+  ttsEngine: "browser",
+  voiceLanguage: "en-US",
+  accentColor: "purple",
+  soundEffects: true,
+  vibration: false,
+  autoRead: false,
 };
 
 const LANGUAGES = [
@@ -173,6 +192,33 @@ const LANGUAGES = [
   { value: "ur", label: "Urdu" },
   { value: "hi", label: "Hindi" },
   { value: "ar", label: "Arabic" },
+];
+
+const VOICE_LANGUAGES = [
+  { value: "en-US", label: "English (US)" },
+  { value: "en-GB", label: "English (UK)" },
+  { value: "ur-PK", label: "Urdu (Pakistan)" },
+  { value: "hi-IN", label: "Hindi (India)" },
+  { value: "ar-SA", label: "Arabic (Saudi)" },
+  { value: "es-ES", label: "Spanish (Spain)" },
+  { value: "fr-FR", label: "French (France)" },
+  { value: "de-DE", label: "German (Germany)" },
+  { value: "ja-JP", label: "Japanese" },
+  { value: "zh-CN", label: "Chinese (Simplified)" },
+];
+
+const TTS_ENGINES = [
+  { value: "browser", label: "Browser TTS", description: "Built-in speech synthesis" },
+  { value: "google", label: "Google TTS", description: "High quality voices" },
+  { value: "azure", label: "Azure Neural", description: "Microsoft neural voices" },
+];
+
+const ACCENT_COLORS = [
+  { value: "purple", label: "Purple", color: "bg-purple-500", ring: "ring-purple-500" },
+  { value: "blue", label: "Blue", color: "bg-blue-500", ring: "ring-blue-500" },
+  { value: "teal", label: "Teal", color: "bg-teal-500", ring: "ring-teal-500" },
+  { value: "rose", label: "Rose", color: "bg-rose-500", ring: "ring-rose-500" },
+  { value: "amber", label: "Amber", color: "bg-amber-500", ring: "ring-amber-500" },
 ];
 
 function loadSettings(): TamannaSettings {
@@ -231,6 +277,27 @@ export default function SettingsSheet({
   const [pluginsSearch, setPluginsSearch] = useState("");
   const [connectingType, setConnectingType] = useState<string | null>(null);
   const [configuringPlugin, setConfiguringPlugin] = useState<{ type: string; name: string; description: string; icon: React.ElementType; color: string; bgColor: string; category: string; status: string; dbId: string | null } | null>(null);
+
+  // ─── Voice Preview State ─────────────────────────────────────
+  const [isPreviewing, setIsPreviewing] = useState(false);
+
+  const handleVoicePreview = useCallback(() => {
+    if (isPreviewing) {
+      window.speechSynthesis.cancel();
+      setIsPreviewing(false);
+      return;
+    }
+    const utterance = new SpeechSynthesisUtterance(
+      `Hello! I am Tamanna, your AI voice assistant. Speaking at ${settings.voiceSpeed.toFixed(2)}x speed.`
+    );
+    utterance.lang = settings.voiceLanguage;
+    utterance.rate = settings.voiceSpeed;
+    utterance.onend = () => setIsPreviewing(false);
+    utterance.onerror = () => setIsPreviewing(false);
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+    setIsPreviewing(true);
+  }, [isPreviewing, settings.voiceSpeed, settings.voiceLanguage]);
 
   const fetchPlugins = useCallback(async () => {
     setPluginsLoading(true);
@@ -467,9 +534,9 @@ export default function SettingsSheet({
           <section>
             <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
               <Sun className="w-4 h-4 text-lumina-primary" />
-              Theme
+              Appearance
             </Label>
-            <div className="glass-pill rounded-xl p-3 flex items-center gap-3">
+            <div className="glass-pill rounded-xl p-3 space-y-3">
               <div className="flex gap-1 bg-lumina-surface-variant/30 rounded-lg p-1">
                 {[
                   { value: "light", icon: Sun, label: "Light" },
@@ -491,52 +558,146 @@ export default function SettingsSheet({
                   </button>
                 ))}
               </div>
-            </div>
-          </section>
-
-          <Separator className="bg-lumina-outline-variant/40" />
-
-          {/* ── Voice Speed ──────────────────────────────── */}
-          <section>
-            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
-              <Volume2 className="w-4 h-4 text-lumina-primary" />
-              Voice Speed
-            </Label>
-            <div className="glass-pill rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-lumina-on-surface-variant">Slow</span>
-                <span className="text-sm font-semibold text-lumina-primary tabular-nums">
-                  {settings.voiceSpeed.toFixed(2)}x
-                </span>
-                <span className="text-xs text-lumina-on-surface-variant">Fast</span>
+              {/* Accent Color Picker */}
+              <div>
+                <span className="text-xs text-lumina-on-surface-variant mb-2 block">Accent Color</span>
+                <div className="flex items-center gap-2">
+                  {ACCENT_COLORS.map((accent) => (
+                    <button
+                      key={accent.value}
+                      onClick={() => updateSetting("accentColor", accent.value)}
+                      className={`relative w-7 h-7 rounded-full ${accent.color} transition-all duration-200 hover:scale-110 ${
+                        settings.accentColor === accent.value
+                          ? `ring-2 ${accent.ring} ring-offset-2 ring-offset-background`
+                          : "opacity-60 hover:opacity-100"
+                      }`}
+                      aria-label={`${accent.label} accent`}
+                      title={accent.label}
+                    />
+                  ))}
+                </div>
               </div>
-              <Slider
-                min={0.5}
-                max={2.0}
-                step={0.05}
-                value={[settings.voiceSpeed]}
-                onValueChange={(val) => updateSetting("voiceSpeed", val[0])}
-                className="py-2"
-              />
             </div>
           </section>
 
           <Separator className="bg-lumina-outline-variant/40" />
 
-          {/* ── TTS Auto-play ────────────────────────────── */}
+          {/* ── Voice Settings ──────────────────────────────── */}
           <section>
             <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
               <Volume2 className="w-4 h-4 text-lumina-primary" />
-              TTS Auto-play
+              Voice Settings
             </Label>
-            <div className="glass-pill rounded-xl p-3 flex items-center justify-between">
-              <span className="text-sm text-lumina-on-surface-variant">
-                Automatically play voice responses
-              </span>
-              <Switch
-                checked={settings.ttsAutoplay}
-                onCheckedChange={(checked) => updateSetting("ttsAutoplay", checked)}
-              />
+            <div className="glass-pill rounded-xl p-4 space-y-4">
+              {/* Voice Speed Slider */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-lumina-on-surface-variant">Speed</span>
+                  <span className="text-sm font-semibold text-lumina-primary tabular-nums">
+                    {settings.voiceSpeed.toFixed(2)}x
+                  </span>
+                </div>
+                <Slider
+                  min={0.5}
+                  max={2.0}
+                  step={0.05}
+                  value={[settings.voiceSpeed]}
+                  onValueChange={(val) => updateSetting("voiceSpeed", val[0])}
+                  className="py-2"
+                />
+                <div className="flex items-center justify-between mt-1">
+                  <span className="text-[10px] text-lumina-on-surface-variant/40">0.5x</span>
+                  <span className="text-[10px] text-lumina-on-surface-variant/40">2.0x</span>
+                </div>
+              </div>
+
+              <Separator className="bg-lumina-outline-variant/20" />
+
+              {/* TTS Engine Selector */}
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Mic className="w-3.5 h-3.5 text-lumina-primary" />
+                  <span className="text-xs text-lumina-on-surface-variant">TTS Engine</span>
+                </div>
+                <Select
+                  value={settings.ttsEngine}
+                  onValueChange={(val) => updateSetting("ttsEngine", val)}
+                >
+                  <SelectTrigger className="w-full bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface font-[family-name:var(--font-body)]">
+                    <SelectValue placeholder="Select engine" />
+                  </SelectTrigger>
+                  <SelectContent className="glass-card border-lumina-outline-variant/40">
+                    {TTS_ENGINES.map((engine) => (
+                      <SelectItem
+                        key={engine.value}
+                        value={engine.value}
+                        className="text-lumina-on-surface font-[family-name:var(--font-body)] focus:bg-lumina-primary/10 focus:text-lumina-primary"
+                      >
+                        <div className="flex flex-col">
+                          <span>{engine.label}</span>
+                          <span className="text-[10px] text-lumina-on-surface-variant/50">{engine.description}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator className="bg-lumina-outline-variant/20" />
+
+              {/* Voice Language Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-lumina-primary" />
+                    <span className="text-xs text-lumina-on-surface-variant">Voice Language</span>
+                  </div>
+                  <button
+                    onClick={handleVoicePreview}
+                    className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium text-lumina-primary bg-lumina-primary/10 hover:bg-lumina-primary/20 transition-all duration-200 cursor-pointer"
+                    aria-label="Preview voice"
+                  >
+                    {isPreviewing ? (
+                      <Pause className="w-3 h-3" />
+                    ) : (
+                      <Play className="w-3 h-3" />
+                    )}
+                    {isPreviewing ? "Stop" : "Preview"}
+                  </button>
+                </div>
+                <Select
+                  value={settings.voiceLanguage}
+                  onValueChange={(val) => updateSetting("voiceLanguage", val)}
+                >
+                  <SelectTrigger className="w-full bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface font-[family-name:var(--font-body)]">
+                    <SelectValue placeholder="Select voice language" />
+                  </SelectTrigger>
+                  <SelectContent className="glass-card border-lumina-outline-variant/40">
+                    {VOICE_LANGUAGES.map((lang) => (
+                      <SelectItem
+                        key={lang.value}
+                        value={lang.value}
+                        className="text-lumina-on-surface font-[family-name:var(--font-body)] focus:bg-lumina-primary/10 focus:text-lumina-primary"
+                      >
+                        {lang.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator className="bg-lumina-outline-variant/20" />
+
+              {/* TTS Auto-play Toggle */}
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-lumina-on-surface-variant">
+                  Auto-play voice responses
+                </span>
+                <Switch
+                  checked={settings.ttsAutoplay}
+                  onCheckedChange={(checked) => updateSetting("ttsAutoplay", checked)}
+                />
+              </div>
             </div>
           </section>
 
@@ -568,6 +729,50 @@ export default function SettingsSheet({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </section>
+
+          <Separator className="bg-lumina-outline-variant/40" />
+
+          {/* ── Notifications ────────────────────────────── */}
+          <section>
+            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+              <Bell className="w-4 h-4 text-lumina-primary" />
+              Notifications
+            </Label>
+            <div className="glass-pill rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-3.5 h-3.5 text-lumina-on-surface-variant" />
+                  <span className="text-xs text-lumina-on-surface-variant">Sound Effects</span>
+                </div>
+                <Switch
+                  checked={settings.soundEffects}
+                  onCheckedChange={(checked) => updateSetting("soundEffects", checked)}
+                />
+              </div>
+              <Separator className="bg-lumina-outline-variant/20" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-3.5 h-3.5 text-lumina-on-surface-variant" />
+                  <span className="text-xs text-lumina-on-surface-variant">Vibration</span>
+                </div>
+                <Switch
+                  checked={settings.vibration}
+                  onCheckedChange={(checked) => updateSetting("vibration", checked)}
+                />
+              </div>
+              <Separator className="bg-lumina-outline-variant/20" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-3.5 h-3.5 text-lumina-on-surface-variant" />
+                  <span className="text-xs text-lumina-on-surface-variant">Auto-read responses</span>
+                </div>
+                <Switch
+                  checked={settings.autoRead}
+                  onCheckedChange={(checked) => updateSetting("autoRead", checked)}
+                />
+              </div>
             </div>
           </section>
 
@@ -1088,7 +1293,7 @@ export default function SettingsSheet({
 
           {/* ── About Section ─────────────────────────────── */}
           <section className="glass-pill rounded-xl p-4">
-            <div className="flex items-start gap-3">
+            <div className="flex items-start gap-3 mb-3">
               <div className="flex items-center justify-center w-10 h-10 rounded-full bg-lumina-primary/10 shrink-0">
                 <Info className="w-5 h-5 text-lumina-primary" />
               </div>
@@ -1102,6 +1307,43 @@ export default function SettingsSheet({
                   fluid conversations.
                 </p>
               </div>
+            </div>
+
+            <Separator className="bg-lumina-outline-variant/20 mb-3" />
+
+            {/* Version & Build Info */}
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs text-lumina-on-surface-variant">Version</span>
+              <span className="text-xs font-mono text-lumina-on-surface-variant/60">v0.2.1 · build 2025.07</span>
+            </div>
+
+            {/* Made with love */}
+            <div className="flex items-center justify-center gap-1 py-2">
+              <span className="text-xs text-lumina-on-surface-variant/50">Made with</span>
+              <Heart className="w-3 h-3 text-rose-500 fill-rose-500" />
+              <span className="text-xs text-lumina-on-surface-variant/50">by</span>
+              <span className="text-xs font-semibold text-lumina-primary">Tamanna AI</span>
+            </div>
+
+            <Separator className="bg-lumina-outline-variant/20 mb-3" />
+
+            {/* Legal Links */}
+            <div className="flex items-center justify-center gap-4">
+              <button
+                className="flex items-center gap-1 text-[11px] text-lumina-on-surface-variant/50 hover:text-lumina-primary transition-colors duration-200 cursor-pointer"
+                onClick={() => toast({ title: "Privacy Policy", description: "Coming soon." })}
+              >
+                <Shield className="w-3 h-3" />
+                Privacy Policy
+              </button>
+              <span className="text-lumina-on-surface-variant/20">·</span>
+              <button
+                className="flex items-center gap-1 text-[11px] text-lumina-on-surface-variant/50 hover:text-lumina-primary transition-colors duration-200 cursor-pointer"
+                onClick={() => toast({ title: "Terms of Service", description: "Coming soon." })}
+              >
+                <FileText className="w-3 h-3" />
+                Terms of Service
+              </button>
             </div>
           </section>
         </div>

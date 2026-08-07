@@ -211,3 +211,61 @@ Stage Summary:
 - Activity tracking uses localStorage (tamanna_activity_log, tamanna_first_use) for persistence
 - All features use Lumina design system: glass-pill, lumina-primary/secondary colors, font-display/body
 - No new dependencies added
+---
+Task ID: 12
+Agent: frontend-styling-expert
+Task: Add CSS polish and animations to globals.css
+
+Work Log:
+- Read worklog.md and existing globals.css (877 lines) to understand Lumina design system
+- Appended 8 new CSS enhancement sections (lines 879-1315) after existing styles
+- Section 1: `.shimmer-loading` class with sweeping gradient shimmer for glass-cards during loading states (light + dark variants)
+- Section 2: Enhanced scrollbar styling with lumina-primary gradient thumb (3-stop gradient), rounded corners via background-clip: padding-box technique, hover expansion (6px→8px width), transparent corners, Firefox scrollbar-width support, light + dark variants
+- Section 3: Toast notification enter/exit animations via `[data-sonner-toast]` selectors — `toast-slide-in` (spring-like with blur), `toast-slide-out` (fast exit), hover lift effect; hooks into Sonner's `data-visible` and `data-removed` attributes
+- Section 4: Enhanced focus-visible ring with triple-layer box-shadow (surface gap + primary ring + outer glow), covering button/a/input/textarea/select/[tabindex], light + dark variants
+- Section 5: `.card-border-gradient` class with Stripe-style animated rotating conic-gradient border using `@property --border-angle` for smooth animation, mask-composite technique for border-only effect, inner fill pseudo-element, content z-index management, hover speed-up (4s→2s), light + dark variants
+- Section 6: Text input glow on focus — triple-layer box-shadow (2px ring + 24px mid-glow + 48px outer-glow) matching orb glow aesthetic, targets text/email/password/search/url/tel inputs + textarea, light + dark variants
+- Section 7: `.tab-panel` transition animations — `tab-content-enter` with translateY + scale + blur spring easing, staggered children entrance (6 items at 30ms intervals), `tab-content-exit` keyframe defined for future JS use
+- Section 8: Enhanced `.ripple-effect .ripple-wave` child element — positioned via --ripple-x/--ripple-y CSS custom properties for exact click origin, 200% size radial gradient circle, expand+fade animation with custom easing, light + dark variants
+- All new CSS is additive only — zero modifications to existing rules
+- All sections have descriptive block comments with usage instructions
+
+Stage Summary:
+- Enhanced: src/app/globals.css (877 → 1315 lines, +438 lines)
+- 8 new CSS enhancement sections added with full light/dark mode support
+- New utility classes: .shimmer-loading, .card-border-gradient, .tab-panel, .ripple-wave (child of .ripple-effect)
+- New animations: card-shimmer-sweep, toast-slide-in, toast-slide-out, border-rotate, tab-content-enter, tab-content-exit, ripple-expand
+- All animations use Lumina color tokens (lumina-primary #4648d4, primary-container #6063ee, secondary #a6b5fd)
+- No existing CSS rules modified — purely additive changes
+
+---
+Task ID: 11
+Agent: settings-enhancer
+Task: Enhance settings-sheet.tsx with Voice Settings, Accent Color Picker, Notifications, and About section
+
+Work Log:
+- Read worklog.md and existing settings-sheet.tsx (1155 lines) to understand current structure and Lumina design system
+- Added 7 new lucide-react icon imports: Globe, Bell, Smartphone, Heart, Shield, FileText, Mic
+- Extended TamannaSettings interface with 6 new fields: ttsEngine, voiceLanguage, accentColor, soundEffects, vibration, autoRead
+- Updated DEFAULT_SETTINGS with new defaults: ttsEngine="browser", voiceLanguage="en-US", accentColor="purple", soundEffects=true, vibration=false, autoRead=false
+- Added VOICE_LANGUAGES constant (10 languages: en-US, en-GB, ur-PK, hi-IN, ar-SA, es-ES, fr-FR, de-DE, ja-JP, zh-CN)
+- Added TTS_ENGINES constant (3 engines: Browser TTS, Google TTS, Azure Neural) with descriptions
+- Added ACCENT_COLORS constant (5 colors: Purple, Blue, Teal, Rose, Amber) with bg/ring Tailwind classes
+- Enhanced Theme section → Renamed to "Appearance", added Accent Color Picker with 5 circular buttons, ring indicator on selection, hover:scale-110, opacity-60 for unselected
+- Consolidated Voice Speed + TTS Auto-play + Response Language into unified "Voice Settings" section with: speed slider (0.5x-2x), TTS Engine dropdown, Voice Language dropdown with Globe icon, Voice Preview button (Play/Pause toggle) using Web Speech API, Auto-play toggle
+- Added handleVoicePreview callback using SpeechSynthesisUtterance with current voiceLanguage and voiceSpeed
+- Added isPreviewing state for voice preview toggle UI
+- Added Notifications section with 3 Switch toggles: Sound Effects (Volume2 icon), Vibration (Smartphone icon), Auto-read responses (Volume2 icon)
+- Enhanced About section with: version+build info row ("v0.2.1 · build 2025.07"), "Made with ❤️ by Tamanna AI" centered with Heart icon, Privacy Policy + Terms of Service links (Shield/FileText icons) that show toast placeholders
+- All new settings stored in tamanna_settings localStorage key via existing saveSettings/updateSetting helpers
+- All lint checks pass (only pre-existing db.ts error)
+
+Stage Summary:
+- Enhanced: src/components/settings-sheet.tsx (1155 → 1400+ lines)
+- New sections: Voice Settings (consolidated), Notifications, enhanced About
+- New features: TTS engine selector, voice language dropdown, voice preview button (Web Speech API), accent color picker (5 presets), notification toggles (3), version info, legal links
+- TamannaSettings interface extended from 3 to 9 fields
+- accentColor stored as part of tamanna_settings object in localStorage
+- All features use Lumina design system: glass-pill containers, lumina color tokens, font-display/body, consistent spacing
+- No new dependencies added
+
