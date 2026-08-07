@@ -1,0 +1,15 @@
+{
+  "name": "tamanna-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tamanna Voice Assistant — Desktop App (Tauri)",
+  "scripts": {
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:mac": "tauri build --target universal-apple-darwin",
+    "tauri:build:win": "tauri build --target nsis"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

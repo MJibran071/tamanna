@@ -1,0 +1,44 @@
+{
+  "appId": "ai.tamanna.voiceassistant",
+  "appName": "Tamanna",
+  "webDir": "../.next/standalone",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": ["*"]
+  },
+  "plugins": {
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#4648d4"
+    },
+    "Keyboard": {
+      "resize": "none",
+      "resizeOnFullScreen": true
+    },
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#faf8ff",
+      "showSpinner": true,
+      "spinnerColor": "#4648d4",
+      "iosSpinnerStyle": "small",
+      "androidScaleType": "CENTER_CROP"
+    },
+    "ScreenOrientation": {
+      "defaultOrientation": "portrait"
+    }
+  },
+  "android": {
+    "backgroundColor": "#faf8ff",
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "contentInset": {
+      "automatic": true
+    },
+    "scrollEnabled": false,
+    "backgroundColor": "#faf8ff",
+    "disableSwipeBack": true
+  }
+}

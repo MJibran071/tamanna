@@ -1,0 +1,23 @@
+{
+  "name": "tamanna-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tamanna Voice Assistant — Mobile App (Capacitor)",
+  "scripts": {
+    "cap:init": "npx cap init ai.tamanna.voiceassistant Tamanna --web-dir ../.next/standalone",
+    "cap:add:android": "npx cap add android",
+    "cap:add:ios": "npx cap add ios",
+    "cap:sync": "npx cap sync",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "build:mobile": "cd .. && bun run build && npx cap sync"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^6",
+    "@capacitor/cli": "^6",
+    "@capacitor/status-bar": "^6",
+    "@capacitor/keyboard": "^6",
+    "@capacitor/splash-screen": "^6",
+    "@capacitor/screen-orientation": "^6"
+  }
+}

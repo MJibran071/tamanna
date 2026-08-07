@@ -1,0 +1,25 @@
+/home/z/my-project/mini-services/voice-stack/index.py:674: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+/home/z/my-project/mini-services/voice-stack/index.py:683: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("shutdown")
+INFO:     Started server process [10733]
+INFO:     Waiting for application startup.
+12:21:23 [INFO] voice-stack: ============================================================
+12:21:23 [INFO] voice-stack:   Tamanna Local Voice Stack v1.0
+12:21:23 [INFO] voice-stack:   Port: 3010 | Models: /home/z/my-project/mini-services/voice-stack/models
+12:21:23 [INFO] voice-stack:   7 TTS Engines | Whisper STT | Smart Router
+12:21:23 [INFO] voice-stack: ============================================================
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:3010 (Press CTRL+C to quit)
+INFO:     127.0.0.1:48780 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48796 - "GET /engines HTTP/1.1" 200 OK
