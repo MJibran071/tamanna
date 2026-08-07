@@ -1,0 +1,853 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useMemo } from 'react';
+     4→import { useAgentStore } from '@/lib/stores/agent-store';
+     5→import {
+     6→  CheckCircle2,
+     7→  XCircle,
+     8→  Circle,
+     9→  Bot,
+    10→  Search,
+    11→  FileText,
+    12→  Calculator,
+    13→  Code2,
+    14→  Globe,
+    15→  Brain,
+    16→  Zap,
+    17→  Play,
+    18→  Pause,
+    19→  RotateCcw,
+    20→  Clock,
+    21→  Flame,
+    22→  Trophy,
+    23→  Target,
+    24→  ChevronDown,
+    25→  ChevronUp,
+    26→  Sparkles,
+    27→  Loader2,
+    28→  AlertTriangle,
+    29→  ArrowRight,
+    30→  BrainCircuit,
+    31→  Layers,
+    32→} from 'lucide-react';
+    33→import { motion, AnimatePresence } from 'framer-motion';
+    34→import { formatDistanceToNow } from 'date-fns';
+    35→
+    36→// ─── Types ────────────────────────────────────────────────────────────────
+    37→
+    38→interface TaskExecution {
+    39→  id: string;
+    40→  prompt: string;
+    41→  status: 'pending' | 'running' | 'completed' | 'failed';
+    42→  steps: TaskStep[];
+    43→  startedAt: string | null;
+    44→  completedAt: string | null;
+    45→  artifacts: TaskArtifact[];
+    46→  durationMs?: number;
+    47→}
+    48→
+    49→interface TaskStep {
+    50→  id: string;
+    51→  agent: string;
+    52→  description: string;
+    53→  status: 'pending' | 'running' | 'completed' | 'failed';
+    54→  result?: string;
+    55→  error?: string;
+    56→  durationMs?: number;
+    57→  startedAt?: string;
+    58→  completedAt?: string;
+    59→}
+    60→
+    61→interface TaskArtifact {
+    62→  id: string;
+    63→  title: string;
+    64→  type: 'image' | 'document' | 'code' | 'data' | 'audio';
+    65→  size?: string;
+    66→  createdAt: string;
+    67→}
+    68→
+    69→interface TaskStats {
+    70→  totalTasks: number;
+    71→  completedTasks: number;
+    72→  failedTasks: number;
+    73→  avgDurationMs: number;
+    74→  successRate: number;
+    75→  totalSteps: number;
+    76→}
+    77→
+    78→// ─── Helper ────────────────────────────────────────────────────────────────
+    79→
+    80→function getAgentIconKey(agent: string): string {
+    81→  const key = agent.toLowerCase();
+    82→  const map: Record<string, string> = {
+    83→    researcher: 'search',
+    84→    writer: 'filetext',
+    85→    coder: 'code2',
+    86→    browser: 'globe',
+    87→    analyst: 'calculator',
+    88→    planner: 'brain',
+    89→    executor: 'zap',
+    90→    vision: 'eye',
+    91→    translator: 'languages',
+    92→    summarizer: 'filetext',
+    93→    math: 'calculator',
+    94→    search: 'search',
+    95→  };
+    96→  for (const [k, v] of Object.entries(map)) {
+    97→    if (key.includes(k)) return v;
+    98→  }
+    99→  return 'bot';
+   100→}
+   101→
+   102→function DynamicAgentIcon({ agent, className, size = 'sm' }: { agent: string; className?: string; size?: 'sm' | 'md' }) {
+   103→  const iconKey = getAgentIconKey(agent);
+   104→  const cls = className ?? '';
+   105→  const IconComponent = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
+   106→  switch (iconKey) {
+   107→    case 'search':
+   108→      return <Search className={`${cls} ${IconComponent}`} />;
+   109→    case 'filetext':
+   110→      return <FileText className={`${cls} ${IconComponent}`} />;
+   111→    case 'code2':
+   112→      return <Code2 className={`${cls} ${IconComponent}`} />;
+   113→    case 'globe':
+   114→      return <Globe className={`${cls} ${IconComponent}`} />;
+   115→    case 'calculator':
+   116→      return <Calculator className={`${cls} ${IconComponent}`} />;
+   117→    case 'brain':
+   118→      return <Brain className={`${cls} ${IconComponent}`} />;
+   119→    case 'zap':
+   120→      return <Zap className={`${cls} ${IconComponent}`} />;
+   121→    default:
+   122→      return <Bot className={`${cls} ${IconComponent}`} />;
+   123→  }
+   124→}
+   125→
+   126→function formatDuration(ms: number): string {
+   127→  if (ms < 1000) return `${ms}ms`;
+   128→  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+   129→  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+   130→}
+   131→
+   132→function getStepStatusColor(status: TaskStep['status']): string {
+   133→  switch (status) {
+   134→    case 'completed':
+   135→      return 'emerald';
+   136→    case 'failed':
+   137→      return 'red';
+   138→    case 'running':
+   139→      return 'lumina-primary';
+   140→    default:
+   141→      return 'outline';
+   142→  }
+   143→}
+   144→
+   145→// ─── Stats Cards ──────────────────────────────────────────────────────────
+   146→
+   147→function StatsRow({ stats }: { stats: TaskStats }) {
+   148→  const cards = [
+   149→    {
+   150→      icon: Target,
+   151→      label: 'Tasks',
+   152→      value: stats.totalTasks,
+   153→      color: 'text-lumina-primary',
+   154→      bgColor: 'bg-lumina-primary/10',
+   155→      borderColor: 'border-lumina-primary/20',
+   156→    },
+   157→    {
+   158→      icon: Trophy,
+   159→      label: 'Completed',
+   160→      value: stats.completedTasks,
+   161→      color: 'text-emerald-500',
+   162→      bgColor: 'bg-emerald-500/10',
+   163→      borderColor: 'border-emerald-500/20',
+   164→    },
+   165→    {
+   166→      icon: Flame,
+   167→      label: 'Success Rate',
+   168→      value: `${stats.successRate}%`,
+   169→      color: stats.successRate >= 80 ? 'text-emerald-500' : stats.successRate >= 50 ? 'text-amber-500' : 'text-red-500',
+   170→      bgColor: stats.successRate >= 80 ? 'bg-emerald-500/10' : stats.successRate >= 50 ? 'bg-amber-500/10' : 'bg-red-500/10',
+   171→      borderColor: stats.successRate >= 80 ? 'border-emerald-500/20' : stats.successRate >= 50 ? 'border-amber-500/20' : 'border-red-500/20',
+   172→    },
+   173→    {
+   174→      icon: Zap,
+   175→      label: 'Avg Time',
+   176→      value: stats.avgDurationMs > 0 ? formatDuration(stats.avgDurationMs) : '—',
+   177→      color: 'text-violet-500',
+   178→      bgColor: 'bg-violet-500/10',
+   179→      borderColor: 'border-violet-500/20',
+   180→    },
+   181→  ];
+   182→
+   183→  return (
+   184→    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+   185→      {cards.map((card, i) => (
+   186→        <motion.div
+   187→          key={card.label}
+   188→          initial={{ opacity: 0, y: 12 }}
+   189→          animate={{ opacity: 1, y: 0 }}
+   190→          transition={{ delay: i * 0.05, duration: 0.3 }}
+   191→          className={`glass-card rounded-xl p-3 border ${card.borderColor}`}
+   192→        >
+   193→          <div className="flex items-center gap-2 mb-1.5">
+   194→            <div className={`p-1.5 rounded-lg ${card.bgColor}`}>
+   195→              <card.icon className={`w-3.5 h-3.5 ${card.color}`} />
+   196→            </div>
+   197→          </div>
+   198→          <p className={`font-[family-name:var(--font-display)] text-lg font-semibold ${card.color}`}>
+   199→            {card.value}
+   200→          </p>
+   201→          <p className="font-[family-name:var(--font-body)] text-[11px] text-lumina-on-surface-variant/60">
+   202→            {card.label}
+   203→          </p>
+   204→        </motion.div>
+   205→      ))}
+   206→    </div>
+   207→  );
+   208→}
+   209→
+   210→// ─── Step Timeline ─────────────────────────────────────────────────────────
+   211→
+   212→function StepTimeline({ steps }: { steps: TaskStep[] }) {
+   213→  const completedCount = steps.filter(s => s.status === 'completed').length;
+   214→  const progressPercent = steps.length > 0 ? (completedCount / steps.length) * 100 : 0;
+   215→
+   216→  return (
+   217→    <div className="relative">
+   218→      {/* Progress bar */}
+   219→      {steps.length > 1 && (
+   220→        <div className="absolute left-[15px] top-0 bottom-0 w-[2px]">
+   221→          <motion.div
+   222→            className="w-full bg-gradient-to-b from-lumina-primary/40 to-lumina-primary/10 rounded-full"
+   223→            initial={{ height: '0%' }}
+   224→            animate={{ height: `${progressPercent}%` }}
+   225→            transition={{ duration: 0.6, ease: 'easeOut' }}
+   226→          />
+   227→        </div>
+   228→      )}
+   229→
+   230→      <div className="space-y-2">
+   231→        {steps.map((step, idx) => (
+   232→          <StepTimelineItem key={step.id} step={step} index={idx} />
+   233→        ))}
+   234→      </div>
+   235→    </div>
+   236→  );
+   237→}
+   238→
+   239→function StepTimelineItem({ step, index }: { step: TaskStep; index: number }) {
+   240→  const isRunning = step.status === 'running';
+   241→  const isCompleted = step.status === 'completed';
+   242→  const isFailed = step.status === 'failed';
+   243→
+   244→  return (
+   245→    <motion.div
+   246→      initial={{ opacity: 0, x: -12 }}
+   247→      animate={{ opacity: 1, x: 0 }}
+   248→      transition={{ delay: index * 0.08, duration: 0.3 }}
+   249→      className="flex items-start gap-3 relative"
+   250→    >
+   251→      {/* Status indicator */}
+   252→      <div className="relative z-10 shrink-0">
+   253→        {isCompleted && (
+   254→          <motion.div
+   255→            initial={{ scale: 0.5, opacity: 0 }}
+   256→            animate={{ scale: 1, opacity: 1 }}
+   257→            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+   258→            className="w-[30px] h-[30px] rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center"
+   259→          >
+   260→            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+   261→          </motion.div>
+   262→        )}
+   263→        {isFailed && (
+   264→          <motion.div
+   265→            initial={{ scale: 0.5, opacity: 0 }}
+   266→            animate={{ scale: 1, opacity: 1 }}
+   267→            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+   268→            className="w-[30px] h-[30px] rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center"
+   269→          >
+   270→            <XCircle className="w-4 h-4 text-red-500" />
+   271→          </motion.div>
+   272→        )}
+   273→        {isRunning && (
+   274→          <motion.div
+   275→            animate={{ scale: [0.95, 1.05, 0.95] }}
+   276→            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+   277→            className="w-[30px] h-[30px] rounded-full bg-lumina-primary/10 border border-lumina-primary/40 flex items-center justify-center"
+   278→          >
+   279→            <motion.div
+   280→              animate={{ rotate: 360 }}
+   281→              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+   282→            >
+   283→              <DynamicAgentIcon agent={step.agent} className="text-lumina-primary" />
+   284→            </motion.div>
+   285→          </motion.div>
+   286→        )}
+   287→        {!isRunning && !isCompleted && !isFailed && (
+   288→          <div className="w-[30px] h-[30px] rounded-full bg-lumina-surface-variant/20 border border-lumina-outline/30 flex items-center justify-center">
+   289→            <Circle className="w-3.5 h-3.5 text-lumina-outline/50" />
+   290→          </div>
+   291→        )}
+   292→      </div>
+   293→
+   294→      {/* Content */}
+   295→      <div className="flex-1 min-w-0 pb-1">
+   296→        <div className="flex items-center gap-2 mb-0.5">
+   297→          <DynamicAgentIcon agent={step.agent} className="text-lumina-on-surface-variant/50" />
+   298→          <span className="font-mono text-xs font-medium text-lumina-on-surface/70 uppercase tracking-wider">
+   299→            {step.agent}
+   300→          </span>
+   301→          {step.durationMs && (
+   302→            <span className="text-[10px] text-lumina-on-surface-variant/40 ml-auto">
+   303→              {formatDuration(step.durationMs)}
+   304→            </span>
+   305→          )}
+   306→        </div>
+   307→        <p className={`font-[family-name:var(--font-body)] text-sm leading-relaxed ${
+   308→          isRunning ? 'text-lumina-on-surface' : isCompleted ? 'text-lumina-on-surface-variant/80' : 'text-lumina-on-surface-variant/50'
+   309→        }`}>
+   310→          {step.description}
+   311→        </p>
+   312→
+   313→        {/* Running indicator */}
+   314→        {isRunning && (
+   315→          <motion.div
+   316→            initial={{ opacity: 0, height: 0 }}
+   317→            animate={{ opacity: 1, height: 'auto' }}
+   318→            className="flex items-center gap-1.5 mt-1"
+   319→          >
+   320→            <Loader2 className="w-3 h-3 text-lumina-primary animate-spin" />
+   321→            <span className="text-[11px] text-lumina-primary/70">Processing...</span>
+   322→          </motion.div>
+   323→        )}
+   324→
+   325→        {/* Error */}
+   326→        {isFailed && step.error && (
+   327→          <motion.div
+   328→            initial={{ opacity: 0, y: -4 }}
+   329→            animate={{ opacity: 1, y: 0 }}
+   330→            className="mt-1 flex items-start gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/5 border border-red-500/10"
+   331→          >
+   332→            <AlertTriangle className="w-3 h-3 text-red-500 mt-0.5 shrink-0" />
+   333→            <p className="text-[11px] text-red-500/80 leading-relaxed">{step.error}</p>
+   334→          </motion.div>
+   335→        )}
+   336→
+   337→        {/* Result */}
+   338→        {isCompleted && step.result && (
+   339→          <motion.div
+   340→            initial={{ opacity: 0 }}
+   341→            animate={{ opacity: 1 }}
+   342→            className="mt-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/5 border border-emerald-500/10"
+   343→          >
+   344→            <p className="text-[11px] text-emerald-600/70 dark:text-emerald-400/70 leading-relaxed">{step.result}</p>
+   345→          </motion.div>
+   346→        )}
+   347→      </div>
+   348→    </motion.div>
+   349→  );
+   350→}
+   351→
+   352→// ─── Task Card ──────────────────────────────────────────────────────────────
+   353→
+   354→function TaskCard({ task, isExpanded, onToggle }: { task: TaskExecution; isExpanded: boolean; onToggle: () => void }) {
+   355→  const completedSteps = task.steps.filter(s => s.status === 'completed').length;
+   356→  const failedSteps = task.steps.filter(s => s.status === 'failed').length;
+   357→  const isRunning = task.status === 'running';
+   358→
+   359→  const statusBadge = (() => {
+   360→    switch (task.status) {
+   361→      case 'running':
+   362→        return (
+   363→          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lumina-primary/10 border border-lumina-primary/20 text-[10px] font-medium text-lumina-primary uppercase tracking-wider">
+   364→            <motion.span
+   365→              className="w-1.5 h-1.5 rounded-full bg-lumina-primary"
+   366→              animate={{ scale: [1, 1.3, 1] }}
+   367→              transition={{ duration: 1, repeat: Infinity }}
+   368→            />
+   369→            Running
+   370→          </span>
+   371→        );
+   372→      case 'completed':
+   373→        return (
+   374→          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-medium text-emerald-500 uppercase tracking-wider">
+   375→            <CheckCircle2 className="w-3 h-3" />
+   376→            Completed
+   377→          </span>
+   378→        );
+   379→      case 'failed':
+   380→        return (
+   381→          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-[10px] font-medium text-red-500 uppercase tracking-wider">
+   382→            <XCircle className="w-3 h-3" />
+   383→            Failed
+   384→          </span>
+   385→        );
+   386→      default:
+   387→        return (
+   388→          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-lumina-surface-variant/20 border border-lumina-outline/20 text-[10px] font-medium text-lumina-on-surface-variant/50 uppercase tracking-wider">
+   389→            <Circle className="w-3 h-3" />
+   390→            Pending
+   391→          </span>
+   392→        );
+   393→    }
+   394→  })();
+   395→
+   396→  return (
+   397→    <motion.div
+   398→      layout
+   399→      initial={{ opacity: 0, y: 16 }}
+   400→      animate={{ opacity: 1, y: 0 }}
+   401→      exit={{ opacity: 0, y: -16 }}
+   402→      transition={{ duration: 0.3 }}
+   403→      className={`glass-card rounded-2xl border overflow-hidden transition-all duration-300 ${
+   404→        isRunning
+   405→          ? 'border-lumina-primary/30 shadow-[0_0_20px_rgba(70,72,212,0.08)]'
+   406→          : 'border-white/10 dark:border-white/5'
+   407→      }`}
+   408→    >
+   409→      {/* Header */}
+   410→      <button
+   411→        onClick={onToggle}
+   412→        className="w-full flex items-center gap-3 p-4 text-left hover:bg-lumina-primary/[0.02] transition-colors"
+   413→      >
+   414→        {/* Progress ring */}
+   415→        <div className="shrink-0 relative">
+   416→          <svg className="w-10 h-10 -rotate-90" viewBox="0 0 36 36">
+   417→            <circle
+   418→              className="text-lumina-surface-variant/30"
+   419→              stroke="currentColor"
+   420→              strokeWidth="3"
+   421→              fill="none"
+   422→              cx="18"
+   423→              cy="18"
+   424→              r="15"
+   425→            />
+   426→            <motion.circle
+   427→              className={isRunning ? 'text-lumina-primary' : task.status === 'completed' ? 'text-emerald-500' : 'text-lumina-on-surface-variant/30'}
+   428→              stroke="currentColor"
+   429→              strokeWidth="3"
+   430→              fill="none"
+   431→              strokeLinecap="round"
+   432→              cx="18"
+   433→              cy="18"
+   434→              r="15"
+   435→              strokeDasharray={`${2 * Math.PI * 15}`}
+   436→              initial={{ strokeDashoffset: 2 * Math.PI * 15 }}
+   437→              animate={{
+   438→                strokeDashoffset: task.steps.length > 0
+   439→                  ? 2 * Math.PI * 15 * (1 - completedSteps / task.steps.length)
+   440→                  : 2 * Math.PI * 15,
+   441→              }}
+   442→              transition={{ duration: 0.8, ease: 'easeOut' }}
+   443→            />
+   444→          </svg>
+   445→          <div className="absolute inset-0 flex items-center justify-center">
+   446→            <span className="text-[10px] font-bold text-lumina-on-surface/80">
+   447→              {task.steps.length > 0 ? `${completedSteps}/${task.steps.length}` : '—'}
+   448→            </span>
+   449→          </div>
+   450→        </div>
+   451→
+   452→        {/* Task info */}
+   453→        <div className="flex-1 min-w-0">
+   454→          <div className="flex items-center gap-2 mb-0.5">
+   455→            {statusBadge}
+   456→            {task.durationMs && (
+   457→              <span className="text-[10px] text-lumina-on-surface-variant/40">
+   458→                <Clock className="w-3 h-3 inline mr-0.5" />
+   459→                {formatDuration(task.durationMs)}
+   460→              </span>
+   461→            )}
+   462→          </div>
+   463→          <p className="font-[family-name:var(--font-body)] text-sm text-lumina-on-surface/80 truncate">
+   464→            {task.prompt}
+   465→          </p>
+   466→          {task.steps.length > 0 && (
+   467→            <p className="text-[11px] text-lumina-on-surface-variant/50 mt-0.5">
+   468→              {task.steps.length} steps • {completedSteps} done{failedSteps > 0 ? ` • ${failedSteps} failed` : ''}
+   469→            </p>
+   470→          )}
+   471→        </div>
+   472→
+   473→        {/* Expand/collapse */}
+   474→        <motion.div
+   475→          animate={{ rotate: isExpanded ? 180 : 0 }}
+   476→          transition={{ duration: 0.2 }}
+   477→        >
+   478→          <ChevronDown className="w-4 h-4 text-lumina-on-surface-variant/40" />
+   479→        </motion.div>
+   480→      </button>
+   481→
+   482→      {/* Expanded content */}
+   483→      <AnimatePresence>
+   484→        {isExpanded && (
+   485→          <motion.div
+   486→            initial={{ height: 0, opacity: 0 }}
+   487→            animate={{ height: 'auto', opacity: 1 }}
+   488→            exit={{ height: 0, opacity: 0 }}
+   489→            transition={{ duration: 0.3 }}
+   490→            className="overflow-hidden"
+   491→          >
+   492→            <div className="px-4 pb-4 pt-2 border-t border-white/5 dark:border-white/3">
+   493→              {/* Step timeline */}
+   494→              {task.steps.length > 0 && (
+   495→                <div className="mb-3">
+   496→                  <div className="flex items-center gap-2 mb-2">
+   497→                    <Layers className="w-3.5 h-3.5 text-lumina-on-surface-variant/50" />
+   498→                    <span className="text-[11px] font-medium text-lumina-on-surface-variant/60 uppercase tracking-wider">
+   499→                      Execution Steps
+   500→                    </span>
+   501→                  </div>
+   502→                  <StepTimeline steps={task.steps} />
+   503→                </div>
+   504→              )}
+   505→
+   506→              {/* Artifacts */}
+   507→              {task.artifacts.length > 0 && (
+   508→                <div className="mt-3 pt-3 border-t border-white/5 dark:border-white/3">
+   509→                  <div className="flex items-center gap-2 mb-2">
+   510→                    <Sparkles className="w-3.5 h-3.5 text-lumina-on-surface-variant/50" />
+   511→                    <span className="text-[11px] font-medium text-lumina-on-surface-variant/60 uppercase tracking-wider">
+   512→                      Artifacts ({task.artifacts.length})
+   513→                    </span>
+   514→                  </div>
+   515→                  <div className="flex flex-wrap gap-2">
+   516→                    {task.artifacts.map(artifact => (
+   517→                      <div
+   518→                        key={artifact.id}
+   519→                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-lumina-surface-variant/20 border border-lumina-outline/10 text-[11px] text-lumina-on-surface-variant/70"
+   520→                      >
+   521→                        <ArtifactTypeIcon type={artifact.type} />
+   522→                        <span className="max-w-[120px] truncate">{artifact.title}</span>
+   523→                        {artifact.size && (
+   524→                          <span className="text-lumina-on-surface-variant/40">{artifact.size}</span>
+   525→                        )}
+   526→                      </div>
+   527→                    ))}
+   528→                  </div>
+   529→                </div>
+   530→              )}
+   531→
+   532→              {/* Timeline */}
+   533→              <div className="mt-3 pt-3 border-t border-white/5 dark:border-white/3 flex items-center gap-3 text-[11px] text-lumina-on-surface-variant/40">
+   534→                {task.startedAt && (
+   535→                  <span className="flex items-center gap-1">
+   536→                    <Play className="w-3 h-3" />
+   537→                    Started {formatDistanceToNow(new Date(task.startedAt), { addSuffix: true })}
+   538→                  </span>
+   539→                )}
+   540→                {task.completedAt && (
+   541→                  <span className="flex items-center gap-1">
+   542→                    <CheckCircle2 className="w-3 h-3" />
+   543→                    Finished {formatDistanceToNow(new Date(task.completedAt), { addSuffix: true })}
+   544→                  </span>
+   545→                )}
+   546→              </div>
+   547→            </div>
+   548→          </motion.div>
+   549→        )}
+   550→      </AnimatePresence>
+   551→    </motion.div>
+   552→  );
+   553→}
+   554→
+   555→function ArtifactTypeIcon({ type }: { type: string }) {
+   556→  switch (type) {
+   557→    case 'image':
+   558→      return <Globe className="w-3 h-3 text-emerald-500" />;
+   559→    case 'document':
+   560→      return <FileText className="w-3 h-3 text-blue-500" />;
+   561→    case 'code':
+   562→      return <Code2 className="w-3 h-3 text-purple-500" />;
+   563→    case 'data':
+   564→      return <Calculator className="w-3 h-3 text-orange-500" />;
+   565→    case 'audio':
+   566→      return <Zap className="w-3 h-3 text-pink-500" />;
+   567→    default:
+   568→      return <FileText className="w-3 h-3 text-lumina-on-surface-variant" />;
+   569→  }
+   570→}
+   571→
+   572→// ─── Active Task Hero (shown during execution) ──────────────────────────────
+   573→
+   574→function ActiveTaskHero({ task }: { task: TaskExecution }) {
+   575→  const completedSteps = task.steps.filter(s => s.status === 'completed').length;
+   576→  const progressPercent = task.steps.length > 0 ? (completedSteps / task.steps.length) * 100 : 0;
+   577→  const currentStep = task.steps.find(s => s.status === 'running');
+   578→
+   579→  return (
+   580→    <motion.div
+   581→      initial={{ opacity: 0, y: 20 }}
+   582→      animate={{ opacity: 1, y: 0 }}
+   583→      exit={{ opacity: 0, y: -10 }}
+   584→      className="w-full max-w-2xl mx-auto"
+   585→    >
+   586→      <div className="glass-card rounded-2xl p-5 border border-lumina-primary/20 shadow-[0_0_30px_rgba(70,72,212,0.06)] relative overflow-hidden">
+   587→        {/* Animated gradient border at top */}
+   588→        <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden">
+   589→          <motion.div
+   590→            className="h-full bg-gradient-to-r from-lumina-primary via-lumina-secondary to-lumina-primary"
+   591→            animate={{ x: ['-100%', '100%'] }}
+   592→            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+   593→            style={{ width: '200%' }}
+   594→          />
+   595→        </div>
+   596→
+   597→        {/* Header */}
+   598→        <div className="flex items-center justify-between mb-4">
+   599→          <div className="flex items-center gap-2">
+   600→            <div className="p-1.5 rounded-xl bg-lumina-primary/10 border border-lumina-primary/20">
+   601→              <BrainCircuit className="w-4 h-4 text-lumina-primary" />
+   602→            </div>
+   603→            <div>
+   604→              <h3 className="font-[family-name:var(--font-display)] text-sm font-semibold text-lumina-on-surface">
+   605→                Agent Working
+   606→              </h3>
+   607→              <p className="text-[11px] text-lumina-on-surface-variant/50">
+   608→                Multi-step execution in progress
+   609→              </p>
+   610→            </div>
+   611→          </div>
+   612→          <span className="flex items-center gap-1.5 text-xs font-medium text-lumina-primary tabular-nums">
+   613→            {completedSteps}/{task.steps.length} steps
+   614→          </span>
+   615→        </div>
+   616→
+   617→        {/* Progress bar */}
+   618→        <div className="mb-4">
+   619→          <div className="h-1.5 bg-lumina-surface-variant/30 rounded-full overflow-hidden">
+   620→            <motion.div
+   621→              className="h-full bg-gradient-to-r from-lumina-primary to-lumina-secondary rounded-full"
+   622→              animate={{ width: `${progressPercent}%` }}
+   623→              transition={{ duration: 0.5, ease: 'easeOut' }}
+   624→            />
+   625→          </div>
+   626→          <div className="flex justify-between mt-1">
+   627→            <span className="text-[10px] text-lumina-on-surface-variant/40">
+   628→              Step {completedSteps + 1} of {task.steps.length}
+   629→            </span>
+   630→            <span className="text-[10px] text-lumina-on-surface-variant/40">
+   631→              {Math.round(progressPercent)}%
+   632→            </span>
+   633→          </div>
+   634→        </div>
+   635→
+   636→        {/* Current step highlight */}
+   637→        {currentStep && (
+   638→          <motion.div
+   639→            layout
+   640→            className="p-3 rounded-xl bg-lumina-primary/5 border border-lumina-primary/10"
+   641→          >
+   642→            <div className="flex items-center gap-2 mb-1">
+   643→              <motion.div
+   644→                animate={{ rotate: 360 }}
+   645→                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+   646→              >
+   647→                <DynamicAgentIcon agent={currentStep.agent} className="text-lumina-primary" />
+   648→              </motion.div>
+   649→              <span className="font-mono text-xs font-medium text-lumina-primary uppercase tracking-wider">
+   650→                {currentStep.agent}
+   651→              </span>
+   652→            </div>
+   653→            <p className="font-[family-name:var(--font-body)] text-sm text-lumina-on-surface/80 leading-relaxed">
+   654→              {currentStep.description}
+   655→            </p>
+   656→          </motion.div>
+   657→        )}
+   658→
+   659→        {/* Quick step overview */}
+   660→        <div className="mt-4 flex gap-1.5">
+   661→          {task.steps.map((step, idx) => {
+   662→            const dotColor = step.status === 'completed'
+   663→              ? 'bg-emerald-500'
+   664→              : step.status === 'failed'
+   665→                ? 'bg-red-500'
+   666→                : step.status === 'running'
+   667→                  ? 'bg-lumina-primary'
+   668→                  : 'bg-lumina-outline/30';
+   669→            return (
+   670→              <motion.div
+   671→                key={step.id}
+   672→                className={`flex-1 h-1 rounded-full ${dotColor} transition-colors duration-300`}
+   673→                initial={{ opacity: 0.3 }}
+   674→                animate={{ opacity: 1 }}
+   675→                transition={{ delay: idx * 0.1 }}
+   676→              />
+   677→            );
+   678→          })}
+   679→        </div>
+   680→      </div>
+   681→    </motion.div>
+   682→  );
+   683→}
+   684→
+   685→// ─── Empty State ───────────────────────────────────────────────────────────
+   686→
+   687→function EmptyState() {
+   688→  return (
+   689→    <motion.div
+   690→      initial={{ opacity: 0, scale: 0.95 }}
+   691→      animate={{ opacity: 1, scale: 1 }}
+   692→      className="flex flex-col items-center justify-center py-16 text-center"
+   693→    >
+   694→      <div className="w-16 h-16 rounded-2xl bg-lumina-primary/5 border border-lumina-primary/10 flex items-center justify-center mb-4">
+   695→        <BrainCircuit className="w-7 h-7 text-lumina-primary/40" />
+   696→      </div>
+   697→      <h3 className="font-[family-name:var(--font-display)] text-lg font-semibold text-lumina-on-surface/60 mb-2">
+   698→        No Tasks Yet
+   699→      </h3>
+   700→      <p className="font-[family-name:var(--font-body)] text-sm text-lumina-on-surface-variant/50 max-w-xs leading-relaxed">
+   701→        Start a conversation with Tamanna and give it a complex task. 
+   702→        The agent will break it down into steps and show real-time progress here.
+   703→      </p>
+   704→      <div className="mt-4 flex items-center gap-2 text-[11px] text-lumina-on-surface-variant/40">
+   705→        <ArrowRight className="w-3 h-3" />
+   706→        <span>Try: "Research the latest AI trends and write a summary"</span>
+   707→      </div>
+   708→    </motion.div>
+   709→  );
+   710→}
+   711→
+   712→// ─── Main Dashboard ─────────────────────────────────────────────────────────
+   713→
+   714→export default function TaskDashboard() {
+   715→  const currentPlan = useAgentStore((s) => s.currentPlan);
+   716→  const stepStates = useAgentStore((s) => s.stepStates);
+   717→  const agentState = useAgentStore((s) => s.agentState);
+   718→  const messages = useAgentStore((s) => s.messages);
+   719→  const [expandedTask, setExpandedTask] = useState<string | null>(null);
+   720→
+   721→  // Build the "active" task from current Zustand state (real-time execution)
+   722→  const activeTask: TaskExecution | null = useMemo(() => {
+   723→    if (stepStates.length === 0) return null;
+   724→
+   725→    return {
+   726→      id: 'active',
+   727→      prompt: messages.find(m => m.role === 'user')?.content || 'Current Task',
+   728→      status: agentState === 'executing' || agentState === 'planning' ? 'running'
+   729→        : stepStates.every(s => s.status === 'completed') ? 'completed'
+   730→        : stepStates.some(s => s.status === 'failed') ? 'failed'
+   731→        : 'pending',
+   732→      steps: stepStates.map(s => ({
+   733→        id: `step-${s.stepIndex}`,
+   734→        agent: s.agent,
+   735→        description: s.description,
+   736→        status: s.status,
+   737→        result: s.result,
+   738→        error: s.error,
+   739→      })),
+   740→      startedAt: new Date().toISOString(),
+   741→      completedAt: stepStates.every(s => s.status !== 'pending' && s.status !== 'running')
+   742→        ? new Date().toISOString()
+   743→        : null,
+   744→      artifacts: [],
+   745→    };
+   746→  }, [stepStates, agentState, messages]);
+   747→
+   748→  // Build historical "completed" tasks from message history
+   749→  const historicalTasks: TaskExecution[] = useMemo(() => {
+   750→    // Extract task-like patterns from past messages
+   751→    const tasks: TaskExecution[] = [];
+   752→    // For now, we show the active task prominently
+   753→    // Historical tasks would come from the database in future iterations
+   754→    return tasks;
+   755→  }, []);
+   756→
+   757→  // Calculate stats
+   758→  const stats: TaskStats = useMemo(() => {
+   759→    const allTasks = [...historicalTasks];
+   760→    if (activeTask) allTasks.push(activeTask);
+   761→
+   762→    const completed = allTasks.filter(t => t.status === 'completed');
+   763→    const failed = allTasks.filter(t => t.status === 'failed');
+   764→    const withDuration = allTasks.filter(t => t.durationMs);
+   765→
+   766→    return {
+   767→      totalTasks: allTasks.length,
+   768→      completedTasks: completed.length,
+   769→      failedTasks: failed.length,
+   770→      avgDurationMs: withDuration.length > 0
+   771→        ? Math.round(withDuration.reduce((sum, t) => sum + (t.durationMs || 0), 0) / withDuration.length)
+   772→        : 0,
+   773→      successRate: allTasks.length > 0
+   774→        ? Math.round((completed.length / allTasks.length) * 100)
+   775→        : 0,
+   776→      totalSteps: allTasks.reduce((sum, t) => sum + t.steps.length, 0),
+   777→    };
+   778→  }, [activeTask, historicalTasks]);
+   779→
+   780→  const isCurrentlyExecuting = agentState === 'executing' || agentState === 'planning';
+   781→
+   782→  return (
+   783→    <div className="w-full space-y-4">
+   784→      {/* Header */}
+   785→      <div className="flex items-center justify-between">
+   786→        <div className="flex items-center gap-2">
+   787→          <div className="p-1.5 rounded-xl bg-lumina-primary/10 border border-lumina-primary/20">
+   788→            <BrainCircuit className="w-4 h-4 text-lumina-primary" />
+   789→          </div>
+   790→          <div>
+   791→            <h2 className="font-[family-name:var(--font-display)] text-lg font-semibold text-lumina-on-surface">
+   792→              Task Dashboard
+   793→            </h2>
+   794→            <p className="text-[11px] text-lumina-on-surface-variant/50">
+   795→              Real-time agent execution monitoring
+   796→            </p>
+   797→          </div>
+   798→        </div>
+   799→        {isCurrentlyExecuting && (
+   800→          <motion.span
+   801→            initial={{ opacity: 0, scale: 0.8 }}
+   802→            animate={{ opacity: 1, scale: 1 }}
+   803→            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-lumina-primary/10 border border-lumina-primary/20 text-[11px] font-medium text-lumina-primary"
+   804→          >
+   805→            <motion.span
+   806→              className="w-2 h-2 rounded-full bg-lumina-primary"
+   807→              animate={{ scale: [1, 1.4, 1], opacity: [1, 0.7, 1] }}
+   808→              transition={{ duration: 1.5, repeat: Infinity }}
+   809→            />
+   810→            Live
+   811→          </motion.span>
+   812→        )}
+   813→      </div>
+   814→
+   815→      {/* Stats */}
+   816→      {stats.totalTasks > 0 && <StatsRow stats={stats} />}
+   817→
+   818→      {/* Active Task Hero (during execution) */}
+   819→      <AnimatePresence>
+   820→        {activeTask && isCurrentlyExecuting && (
+   821→          <ActiveTaskHero task={activeTask} />
+   822→        )}
+   823→      </AnimatePresence>
+   824→
+   825→      {/* Task List */}
+   826→      <div className="space-y-3">
+   827→        {/* Active task card (when not executing, show completed/failed state) */}
+   828→        {activeTask && !isCurrentlyExecuting && stepStates.length > 0 && (
+   829→          <TaskCard
+   830→            key={activeTask.id}
+   831→            task={activeTask}
+   832→            isExpanded={expandedTask === activeTask.id}
+   833→            onToggle={() => setExpandedTask(prev => prev === activeTask.id ? null : activeTask.id)}
+   834→          />
+   835→        )}
+   836→
+   837→        {/* Historical tasks */}
+   838→        {historicalTasks.map(task => (
+   839→          <TaskCard
+   840→            key={task.id}
+   841→            task={task}
+   842→            isExpanded={expandedTask === task.id}
+   843→            onToggle={() => setExpandedTask(prev => prev === task.id ? null : task.id)}
+   844→          />
+   845→        ))}
+   846→
+   847→        {/* Empty state */}
+   848→        {!activeTask && historicalTasks.length === 0 && <EmptyState />}
+   849→      </div>
+   850→    </div>
+   851→  );
+   852→}
+   853→

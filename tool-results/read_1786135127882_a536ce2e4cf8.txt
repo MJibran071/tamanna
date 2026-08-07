@@ -1,0 +1,756 @@
+     1→"use client";
+     2→
+     3→import { useState, useCallback, useMemo, useEffect } from "react";
+     4→import {
+     5→  User,
+     6→  Download,
+     7→  Trash2,
+     8→  MessageSquare,
+     9→  BarChart3,
+    10→  Pencil,
+    11→  Check,
+    12→  Flame,
+    13→  Sun,
+    14→  Moon,
+    15→  Monitor,
+    16→  TrendingUp,
+    17→  CalendarDays,
+    18→  Clock,
+    19→  Globe,
+    20→  Zap,
+    21→} from "lucide-react";
+    22→import {
+    23→  Sheet,
+    24→  SheetContent,
+    25→  SheetHeader,
+    26→  SheetTitle,
+    27→  SheetDescription,
+    28→} from "@/components/ui/sheet";
+    29→import { Input } from "@/components/ui/input";
+    30→import { Label } from "@/components/ui/label";
+    31→import { Button } from "@/components/ui/button";
+    32→import { Separator } from "@/components/ui/separator";
+    33→import {
+    34→  AlertDialog,
+    35→  AlertDialogAction,
+    36→  AlertDialogCancel,
+    37→  AlertDialogContent,
+    38→  AlertDialogDescription,
+    39→  AlertDialogFooter,
+    40→  AlertDialogHeader,
+    41→  AlertDialogTitle,
+    42→  AlertDialogTrigger,
+    43→} from "@/components/ui/alert-dialog";
+    44→import { useAgentStore } from "@/lib/stores/agent-store";
+    45→import { useTheme } from "next-themes";
+    46→import { toast } from "@/hooks/use-toast";
+    47→
+    48→/* ─── constants ──────────────────────────────────────────── */
+    49→const PROFILE_KEY = "tamanna_profile";
+    50→const ACTIVITY_KEY = "tamanna_activity_log";
+    51→const FIRST_USE_KEY = "tamanna_first_use";
+    52→const ONBOARDING_KEY = "tamanna_onboarding_done";
+    53→
+    54→interface UserProfile {
+    55→  name: string;
+    56→  email: string;
+    57→}
+    58→
+    59→const DEFAULT_PROFILE: UserProfile = {
+    60→  name: "",
+    61→  email: "",
+    62→};
+    63→
+    64→/* ─── helpers ────────────────────────────────────────────── */
+    65→function loadProfile(): UserProfile {
+    66→  try {
+    67→    const raw = localStorage.getItem(PROFILE_KEY);
+    68→    if (raw) {
+    69→      return { ...DEFAULT_PROFILE, ...JSON.parse(raw) };
+    70→    }
+    71→  } catch {
+    72→    /* ignore */
+    73→  }
+    74→  return DEFAULT_PROFILE;
+    75→}
+    76→
+    77→function saveProfile(profile: UserProfile) {
+    78→  try {
+    79→    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    80→  } catch {
+    81→    /* storage full */
+    82→  }
+    83→}
+    84→
+    85→function getInitials(name: string): string {
+    86→  if (!name || !name.trim()) return "U";
+    87→  const parts = name.trim().split(/\s+/);
+    88→  if (parts.length >= 2) {
+    89→    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    90→  }
+    91→  return parts[0][0].toUpperCase();
+    92→}
+    93→
+    94→/** Simple deterministic hash from a string to a number 0‒1 */
+    95→function hashStr(str: string): number {
+    96→  let h = 0;
+    97→  for (let i = 0; i < str.length; i++) {
+    98→    h = (h * 31 + str.charCodeAt(i)) | 0;
+    99→  }
+   100→  return ((h & 0x7fffffff) % 1000) / 1000;
+   101→}
+   102→
+   103→/** Format a Date to "Mon DD" like "Jun 15" */
+   104→function shortDay(d: Date): string {
+   105→  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+   106→}
+   107→
+   108→/** ISO date string "YYYY-MM-DD" */
+   109→function isoDate(d: Date): string {
+   110→  return d.toISOString().slice(0, 10);
+   111→}
+   112→
+   113→/* ─── activity tracking helpers ─────────────────────────────── */
+   114→
+   115→/** Track today as an active day (called once per render when sheet is open) */
+   116→function recordTodayActivity() {
+   117→  const today = isoDate(new Date());
+   118→  const log = getActivityLog();
+   119→  if (log[today]) return; // already recorded today
+   120→  log[today] = true;
+   121→  localStorage.setItem(ACTIVITY_KEY, JSON.stringify(log));
+   122→}
+   123→
+   124→/** Load the full activity log { "YYYY-MM-DD": true } */
+   125→function getActivityLog(): Record<string, boolean> {
+   126→  try {
+   127→    const raw = localStorage.getItem(ACTIVITY_KEY);
+   128→    if (raw) return JSON.parse(raw);
+   129→  } catch {
+   130→    /* ignore */
+   131→  }
+   132→  return {};
+   133→}
+   134→
+   135→/** Seed historical activity from the first-use / onboarding date */
+   136→function ensureFirstUseDate(): string | null {
+   137→  // Prefer the explicit key
+   138→  let first = localStorage.getItem(FIRST_USE_KEY);
+   139→  if (!first) {
+   140→    first = localStorage.getItem(ONBOARDING_KEY) === "1" ? "seeded" : null;
+   141→  }
+   142→  if (!first) {
+   143→    // Check profile key timestamp as heuristic
+   144→    try {
+   145→      const profileRaw = localStorage.getItem(PROFILE_KEY);
+   146→      if (profileRaw) {
+   147→        first = "seeded";
+   148→      }
+   149→    } catch {
+   150→      /* ignore */
+   151→    }
+   152→  }
+   153→  if (!first) return null;
+   154→  if (first === "seeded") {
+   155→    // Set today as first use if not already set
+   156→    localStorage.setItem(FIRST_USE_KEY, isoDate(new Date()));
+   157→    return localStorage.getItem(FIRST_USE_KEY);
+   158→  }
+   159→  return first;
+   160→}
+   161→
+   162→/** Calculate the current streak (consecutive active days ending today/yesterday) */
+   163→function calculateStreak(): number {
+   164→  const log = getActivityLog();
+   165→  const today = new Date();
+   166→  let streak = 0;
+   167→  for (let i = 0; i < 365; i++) {
+   168→    const d = new Date(today);
+   169→    d.setDate(d.getDate() - i);
+   170→    const key = isoDate(d);
+   171→    if (log[key]) {
+   172→      streak++;
+   173→    } else {
+   174→      // Allow today to be not yet recorded — if yesterday is active, streak is at least 1
+   175→      if (i === 0) continue;
+   176→      break;
+   177→    }
+   178→  }
+   179→  return streak;
+   180→}
+   181→
+   182→/** Count total distinct active days */
+   183→function countActiveDays(): number {
+   184→  return Object.keys(getActivityLog()).length;
+   185→}
+   186→
+   187→/** Detect browser name from UA */
+   188→function detectBrowser(): string {
+   189→  if (typeof navigator === "undefined") return "Unknown";
+   190→  const ua = navigator.userAgent;
+   191→  if (ua.includes("Firefox")) return "Firefox";
+   192→  if (ua.includes("Edg")) return "Edge";
+   193→  if (ua.includes("Chrome")) return "Chrome";
+   194→  if (ua.includes("Safari")) return "Safari";
+   195→  return "Other";
+   196→}
+   197→
+   198→/* ─── component ───────────────────────────────────────────── */
+   199→
+   200→interface AccountSheetProps {
+   201→  open: boolean;
+   202→  onOpenChange: (open: boolean) => void;
+   203→}
+   204→
+   205→export default function AccountSheet({
+   206→  open,
+   207→  onOpenChange,
+   208→}: AccountSheetProps) {
+   209→  const [profile, setProfile] = useState<UserProfile>(loadProfile);
+   210→  const [editingField, setEditingField] = useState<"name" | "email" | null>(
+   211→    null
+   212→  );
+   213→  const [draftValue, setDraftValue] = useState("");
+   214→  const [mounted, setMounted] = useState(false);
+   215→
+   216→  const { theme, resolvedTheme } = useTheme();
+   217→
+   218→  const conversations = useAgentStore((s) => s.conversations);
+   219→  const messages = useAgentStore((s) => s.messages);
+   220→  const deleteConversation = useAgentStore((s) => s.deleteConversation);
+   221→  const clearAll = useAgentStore((s) => s.clearAll);
+   222→
+   223→  // Record activity and hydrate on mount (client-only)
+   224→  useEffect(() => {
+   225→    ensureFirstUseDate();
+   226→    recordTodayActivity();
+   227→    // Defer setState to avoid synchronous setState-in-effect lint
+   228→    const id = setTimeout(() => setMounted(true), 0);
+   229→    return () => clearTimeout(id);
+   230→  }, []);
+   231→
+   232→  // Re-sync profile from localStorage each time the sheet opens
+   233→  const handleOpenChange = useCallback(
+   234→    (isOpen: boolean) => {
+   235→      if (isOpen) {
+   236→        setProfile(loadProfile());
+   237→        recordTodayActivity();
+   238→      }
+   239→      onOpenChange(isOpen);
+   240→    },
+   241→    [onOpenChange]
+   242→  );
+   243→
+   244→  /* ─── derived stats ─────────────────────────────────── */
+   245→  const stats = useMemo(() => {
+   246→    const totalConversations = conversations.length;
+   247→    const totalMessages =
+   248→      messages.length +
+   249→      conversations.reduce((acc, conv) => acc + conv.messages.length, 0);
+   250→    const activeDays = mounted ? countActiveDays() : 0;
+   251→    const avgPerDay = activeDays > 0 ? +(totalMessages / activeDays).toFixed(1) : 0;
+   252→    return { totalConversations, totalMessages, activeDays, avgPerDay };
+   253→  }, [conversations, messages, mounted]);
+   254→
+   255→  /* ─── activity chart data ──────────────────────────── */
+   256→  const activityData = useMemo(() => {
+   257→    const today = new Date();
+   258→    const log = mounted ? getActivityLog() : {};
+   259→    const days: { label: string; level: number; active: boolean }[] = [];
+   260→    for (let i = 6; i >= 0; i--) {
+   261→      const d = new Date(today);
+   262→      d.setDate(d.getDate() - i);
+   263→      const key = isoDate(d);
+   264→      const isActive = !!log[key];
+   265→      // Generate a deterministic activity level for this day
+   266→      // If active, base it on the hash; if not, give a very low value
+   267→      const raw = hashStr("tamanna_act_" + key);
+   268→      days.push({
+   269→        label: i === 0 ? "Today" : shortDay(d),
+   270→        level: isActive ? 0.3 + raw * 0.7 : raw * 0.15,
+   271→        active: isActive,
+   272→      });
+   273→    }
+   274→    return days;
+   275→  }, [mounted]);
+   276→
+   277→  const streak = useMemo(() => (mounted ? calculateStreak() : 0), [mounted]);
+   278→
+   279→  const sessionStart = useMemo(() => {
+   280→    // Use a session timestamp stored at module load, or just "now"
+   281→    return new Date().toLocaleDateString("en-US", {
+   282→      month: "short",
+   283→      day: "numeric",
+   284→      year: "numeric",
+   285→      hour: "numeric",
+   286→      minute: "2-digit",
+   287→    });
+   288→  }, []);
+   289→
+   290→  const browserName = useMemo(() => detectBrowser(), []);
+   291→
+   292→  /* ─── edit helpers ─────────────────────────────────── */
+   293→  const startEdit = (field: "name" | "email") => {
+   294→    setEditingField(field);
+   295→    setDraftValue(profile[field]);
+   296→  };
+   297→
+   298→  const saveEdit = useCallback(() => {
+   299→    if (!editingField) return;
+   300→    const updated = { ...profile, [editingField]: draftValue };
+   301→    setProfile(updated);
+   302→    saveProfile(updated);
+   303→    setEditingField(null);
+   304→    setDraftValue("");
+   305→    toast({
+   306→      title: "Profile updated",
+   307→      description: `${editingField === "name" ? "Name" : "Email"} saved successfully.`,
+   308→    });
+   309→  }, [editingField, draftValue, profile]);
+   310→
+   311→  const cancelEdit = () => {
+   312→    setEditingField(null);
+   313→    setDraftValue("");
+   314→  };
+   315→
+   316→  /* ─── export ────────────────────────────────────────── */
+   317→  const handleExport = useCallback(() => {
+   318→    try {
+   319→      const exportData = {
+   320→        profile: loadProfile(),
+   321→        settings: (() => {
+   322→          try {
+   323→            return JSON.parse(localStorage.getItem("tamanna_settings") || "{}");
+   324→          } catch {
+   325→            return {};
+   326→          }
+   327→        })(),
+   328→        conversations: conversations.map((conv) => ({
+   329→          id: conv.id,
+   330→          title: conv.title,
+   331→          messages: conv.messages,
+   332→          createdAt: conv.createdAt,
+   333→          updatedAt: conv.updatedAt,
+   334→        })),
+   335→        exportedAt: new Date().toISOString(),
+   336→      };
+   337→
+   338→      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+   339→        type: "application/json",
+   340→      });
+   341→      const url = URL.createObjectURL(blob);
+   342→      const a = document.createElement("a");
+   343→      a.href = url;
+   344→      a.download = `tamanna-export-${new Date().toISOString().split("T")[0]}.json`;
+   345→      document.body.appendChild(a);
+   346→      a.click();
+   347→      document.body.removeChild(a);
+   348→      URL.revokeObjectURL(url);
+   349→
+   350→      toast({
+   351→        title: "Export successful",
+   352→        description: "Your conversations have been downloaded.",
+   353→      });
+   354→    } catch {
+   355→      toast({
+   356→        title: "Export failed",
+   357→        description: "Could not export your data. Please try again.",
+   358→        variant: "destructive",
+   359→      });
+   360→    }
+   361→  }, [conversations]);
+   362→
+   363→  /* ─── clear all ─────────────────────────────────────── */
+   364→  const handleClearAllData = useCallback(() => {
+   365→    for (const conv of conversations) {
+   366→      deleteConversation(conv.id);
+   367→    }
+   368→    clearAll();
+   369→    localStorage.removeItem(PROFILE_KEY);
+   370→    localStorage.removeItem("tamanna_settings");
+   371→    localStorage.removeItem(ACTIVITY_KEY);
+   372→    localStorage.removeItem(FIRST_USE_KEY);
+   373→    setProfile(DEFAULT_PROFILE);
+   374→    handleOpenChange(false);
+   375→    toast({
+   376→      title: "All data cleared",
+   377→      description: "Your profile, settings, and conversations have been removed.",
+   378→    });
+   379→  }, [conversations, deleteConversation, clearAll, handleOpenChange]);
+   380→
+   381→  const initials = getInitials(profile.name);
+   382→
+   383→  const isDark = resolvedTheme === "dark";
+   384→  const effectiveTheme = isDark ? "Dark" : "Light";
+   385→
+   386→  return (
+   387→    <Sheet open={open} onOpenChange={handleOpenChange}>
+   388→      <SheetContent
+   389→        side="right"
+   390→        className="glass-card overflow-y-auto border-l border-white/20 dark:border-white/10 sm:max-w-md"
+   391→      >
+   392→        <SheetHeader className="pb-2">
+   393→          <SheetTitle className="flex items-center gap-2 text-lumina-primary font-[family-name:var(--font-display)] text-xl">
+   394→            <User className="w-5 h-5" />
+   395→            Account
+   396→          </SheetTitle>
+   397→          <SheetDescription className="text-lumina-on-surface-variant font-[family-name:var(--font-body)]">
+   398→            Manage your profile and data
+   399→          </SheetDescription>
+   400→        </SheetHeader>
+   401→
+   402→        <div className="flex flex-col gap-5 mt-2 px-4 pb-6 font-[family-name:var(--font-body)]">
+   403→          {/* ── Avatar & Profile ──────────────────────────── */}
+   404→          <section className="glass-pill rounded-xl p-5">
+   405→            <div className="flex flex-col items-center gap-4">
+   406→              {/* Avatar */}
+   407→              <div className="relative group">
+   408→                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-lumina-primary to-lumina-secondary flex items-center justify-center shadow-tinted-strong transition-transform duration-200 group-hover:scale-105">
+   409→                  <span className="text-2xl font-bold text-lumina-on-primary font-[family-name:var(--font-display)]">
+   410→                    {initials}
+   411→                  </span>
+   412→                </div>
+   413→              </div>
+   414→
+   415→              {/* Name Field */}
+   416→              <div className="w-full space-y-1.5">
+   417→                <Label className="text-xs font-medium text-lumina-on-surface-variant uppercase tracking-wider">
+   418→                  Name
+   419→                </Label>
+   420→                {editingField === "name" ? (
+   421→                  <div className="flex items-center gap-2">
+   422→                    <Input
+   423→                      value={draftValue}
+   424→                      onChange={(e) => setDraftValue(e.target.value)}
+   425→                      onKeyDown={(e) => {
+   426→                        if (e.key === "Enter") saveEdit();
+   427→                        if (e.key === "Escape") cancelEdit();
+   428→                      }}
+   429→                      autoFocus
+   430→                      placeholder="Enter your name"
+   431→                      className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface font-[family-name:var(--font-body)] h-9 text-sm"
+   432→                    />
+   433→                    <Button
+   434→                      size="icon"
+   435→                      variant="ghost"
+   436→                      onClick={saveEdit}
+   437→                      className="h-9 w-9 shrink-0 text-lumina-primary hover:bg-lumina-primary/10"
+   438→                      aria-label="Save name"
+   439→                    >
+   440→                      <Check className="w-4 h-4" />
+   441→                    </Button>
+   442→                  </div>
+   443→                ) : (
+   444→                  <div
+   445→                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-lumina-surface-variant/20 border border-lumina-outline-variant/30 cursor-pointer hover:border-lumina-primary/40 transition-colors duration-200"
+   446→                    onClick={() => startEdit("name")}
+   447→                  >
+   448→                    <span className="text-sm text-lumina-on-surface truncate">
+   449→                      {profile.name || "Set your name"}
+   450→                    </span>
+   451→                    <Pencil className="w-3.5 h-3.5 text-lumina-on-surface-variant shrink-0" />
+   452→                  </div>
+   453→                )}
+   454→              </div>
+   455→
+   456→              {/* Email Field */}
+   457→              <div className="w-full space-y-1.5">
+   458→                <Label className="text-xs font-medium text-lumina-on-surface-variant uppercase tracking-wider">
+   459→                  Email
+   460→                </Label>
+   461→                {editingField === "email" ? (
+   462→                  <div className="flex items-center gap-2">
+   463→                    <Input
+   464→                      type="email"
+   465→                      value={draftValue}
+   466→                      onChange={(e) => setDraftValue(e.target.value)}
+   467→                      onKeyDown={(e) => {
+   468→                        if (e.key === "Enter") saveEdit();
+   469→                        if (e.key === "Escape") cancelEdit();
+   470→                      }}
+   471→                      autoFocus
+   472→                      placeholder="Enter your email"
+   473→                      className="bg-lumina-surface-variant/20 border-lumina-outline-variant/40 text-lumina-on-surface font-[family-name:var(--font-body)] h-9 text-sm"
+   474→                    />
+   475→                    <Button
+   476→                      size="icon"
+   477→                      variant="ghost"
+   478→                      onClick={saveEdit}
+   479→                      className="h-9 w-9 shrink-0 text-lumina-primary hover:bg-lumina-primary/10"
+   480→                      aria-label="Save email"
+   481→                    >
+   482→                      <Check className="w-4 h-4" />
+   483→                    </Button>
+   484→                  </div>
+   485→                ) : (
+   486→                  <div
+   487→                    className="flex items-center justify-between px-3 py-2 rounded-lg bg-lumina-surface-variant/20 border border-lumina-outline-variant/30 cursor-pointer hover:border-lumina-primary/40 transition-colors duration-200"
+   488→                    onClick={() => startEdit("email")}
+   489→                  >
+   490→                    <span className="text-sm text-lumina-on-surface truncate">
+   491→                      {profile.email || "Set your email"}
+   492→                    </span>
+   493→                    <Pencil className="w-3.5 h-3.5 text-lumina-on-surface-variant shrink-0" />
+   494→                  </div>
+   495→                )}
+   496→              </div>
+   497→            </div>
+   498→          </section>
+   499→
+   500→          <Separator className="bg-lumina-outline-variant/40" />
+   501→
+   502→          {/* ── Streak Counter & Activity Chart ────────────── */}
+   503→          <section className="glass-pill rounded-xl p-5 space-y-4">
+   504→            {/* Streak badge + Activity header row */}
+   505→            <div className="flex items-center justify-between">
+   506→              <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2">
+   507→                <TrendingUp className="w-4 h-4 text-lumina-primary" />
+   508→                This Week&apos;s Activity
+   509→              </Label>
+   510→              {/* Streak badge */}
+   511→              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-lumina-primary/15 to-lumina-secondary/15 border border-lumina-primary/20">
+   512→                <Flame
+   513→                  className={`w-4 h-4 ${streak > 0 ? "text-orange-500" : "text-lumina-on-surface-variant/50"}`}
+   514→                />
+   515→                <span
+   516→                  className={`text-sm font-bold font-[family-name:var(--font-display)] tabular-nums ${streak > 0 ? "text-orange-500" : "text-lumina-on-surface-variant/50"}`}
+   517→                >
+   518→                  {streak}
+   519→                </span>
+   520→                <span className="text-xs text-lumina-on-surface-variant hidden sm:inline">
+   521→                  day{streak !== 1 ? "s" : ""}
+   522→                </span>
+   523→              </div>
+   524→            </div>
+   525→
+   526→            {/* 7-day activity bar chart */}
+   527→            <div className="flex items-end justify-between gap-1.5 h-24 px-1">
+   528→              {activityData.map((day, i) => {
+   529→                // Cap minimum height for visibility
+   530→                const barHeight = Math.max(8, day.level * 100);
+   531→                return (
+   532→                  <div
+   533→                    key={i}
+   534→                    className="flex flex-col items-center gap-1.5 flex-1"
+   535→                  >
+   536→                    {/* Bar */}
+   537→                    <div className="w-full flex items-end justify-center" style={{ height: "80px" }}>
+   538→                      <div
+   539→                        className="w-full max-w-[32px] rounded-t-md transition-all duration-300 ease-out"
+   540→                        style={{
+   541→                          height: `${barHeight}%`,
+   542→                          background: day.active
+   543→                            ? "linear-gradient(to top, var(--color-lumina-primary), var(--color-lumina-secondary))"
+   544→                            : "linear-gradient(to top, color-mix(in srgb, var(--color-lumina-primary) 20%, transparent), color-mix(in srgb, var(--color-lumina-secondary) 15%, transparent))",
+   545→                          opacity: day.active ? 1 : 0.5,
+   546→                          boxShadow: day.active
+   547→                            ? "0 0 8px color-mix(in srgb, var(--color-lumina-primary) 30%, transparent)"
+   548→                            : "none",
+   549→                        }}
+   550→                      />
+   551→                    </div>
+   552→                    {/* Day label */}
+   553→                    <span className="text-[10px] leading-none text-lumina-on-surface-variant tabular-nums whitespace-nowrap">
+   554→                      {day.label}
+   555→                    </span>
+   556→                  </div>
+   557→                );
+   558→              })}
+   559→            </div>
+   560→          </section>
+   561→
+   562→          <Separator className="bg-lumina-outline-variant/40" />
+   563→
+   564→          {/* ── Conversation Stats ────────────────────────── */}
+   565→          <section>
+   566→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+   567→              <BarChart3 className="w-4 h-4 text-lumina-primary" />
+   568→              Conversation Stats
+   569→            </Label>
+   570→            <div className="grid grid-cols-2 gap-3">
+   571→              {/* Conversations */}
+   572→              <div className="glass-pill rounded-xl p-4 text-center">
+   573→                <div className="w-9 h-9 rounded-full bg-lumina-primary/10 flex items-center justify-center mx-auto mb-2">
+   574→                  <MessageSquare className="w-4 h-4 text-lumina-primary" />
+   575→                </div>
+   576→                <p className="text-2xl font-bold text-lumina-on-surface font-[family-name:var(--font-display)] tabular-nums">
+   577→                  {stats.totalConversations}
+   578→                </p>
+   579→                <p className="text-xs text-lumina-on-surface-variant mt-0.5">
+   580→                  Conversations
+   581→                </p>
+   582→              </div>
+   583→              {/* Messages */}
+   584→              <div className="glass-pill rounded-xl p-4 text-center">
+   585→                <div className="w-9 h-9 rounded-full bg-lumina-secondary/20 flex items-center justify-center mx-auto mb-2">
+   586→                  <MessageSquare className="w-4 h-4 text-lumina-secondary" />
+   587→                </div>
+   588→                <p className="text-2xl font-bold text-lumina-on-surface font-[family-name:var(--font-display)] tabular-nums">
+   589→                  {stats.totalMessages}
+   590→                </p>
+   591→                <p className="text-xs text-lumina-on-surface-variant mt-0.5">
+   592→                  Messages
+   593→                </p>
+   594→              </div>
+   595→              {/* Avg Messages / Day */}
+   596→              <div className="glass-pill rounded-xl p-4 text-center">
+   597→                <div className="w-9 h-9 rounded-full bg-lumina-primary/10 flex items-center justify-center mx-auto mb-2">
+   598→                  <Zap className="w-4 h-4 text-lumina-primary" />
+   599→                </div>
+   600→                <p className="text-2xl font-bold text-lumina-on-surface font-[family-name:var(--font-display)] tabular-nums">
+   601→                  {stats.avgPerDay}
+   602→                </p>
+   603→                <p className="text-xs text-lumina-on-surface-variant mt-0.5">
+   604→                  Avg Messages/Day
+   605→                </p>
+   606→              </div>
+   607→              {/* Active Days */}
+   608→              <div className="glass-pill rounded-xl p-4 text-center">
+   609→                <div className="w-9 h-9 rounded-full bg-lumina-secondary/20 flex items-center justify-center mx-auto mb-2">
+   610→                  <CalendarDays className="w-4 h-4 text-lumina-secondary" />
+   611→                </div>
+   612→                <p className="text-2xl font-bold text-lumina-on-surface font-[family-name:var(--font-display)] tabular-nums">
+   613→                  {stats.activeDays}
+   614→                </p>
+   615→                <p className="text-xs text-lumina-on-surface-variant mt-0.5">
+   616→                  Active Days
+   617→                </p>
+   618→              </div>
+   619→            </div>
+   620→          </section>
+   621→
+   622→          <Separator className="bg-lumina-outline-variant/40" />
+   623→
+   624→          {/* ── Theme & Session Info ─────────────────────── */}
+   625→          <section className="space-y-3">
+   626→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2">
+   627→              <Monitor className="w-4 h-4 text-lumina-primary" />
+   628→              Preferences &amp; Session
+   629→            </Label>
+   630→
+   631→            <div className="grid grid-cols-2 gap-3">
+   632→              {/* Theme card */}
+   633→              <div className="glass-pill rounded-xl p-4 space-y-2">
+   634→                <div className="flex items-center gap-2">
+   635→                  <div className="w-7 h-7 rounded-full bg-lumina-primary/10 flex items-center justify-center">
+   636→                    {mounted && (isDark ? (
+   637→                      <Moon className="w-3.5 h-3.5 text-lumina-primary" />
+   638→                    ) : (
+   639→                      <Sun className="w-3.5 h-3.5 text-lumina-primary" />
+   640→                    ))}
+   641→                  </div>
+   642→                  <span className="text-xs text-lumina-on-surface-variant font-medium uppercase tracking-wider">
+   643→                    Theme
+   644→                  </span>
+   645→                </div>
+   646→                <p className="text-sm font-semibold text-lumina-on-surface font-[family-name:var(--font-display)]">
+   647→                  {mounted ? effectiveTheme : "…"}
+   648→                </p>
+   649→                <p className="text-[10px] text-lumina-on-surface-variant">
+   650→                  {mounted ? (theme === "system" ? "Follows system" : `${effectiveTheme} mode`) : "Loading…"}
+   651→                </p>
+   652→              </div>
+   653→
+   654→              {/* Language card */}
+   655→              <div className="glass-pill rounded-xl p-4 space-y-2">
+   656→                <div className="flex items-center gap-2">
+   657→                  <div className="w-7 h-7 rounded-full bg-lumina-secondary/20 flex items-center justify-center">
+   658→                    <Globe className="w-3.5 h-3.5 text-lumina-secondary" />
+   659→                  </div>
+   660→                  <span className="text-xs text-lumina-on-surface-variant font-medium uppercase tracking-wider">
+   661→                    Language
+   662→                  </span>
+   663→                </div>
+   664→                <p className="text-sm font-semibold text-lumina-on-surface font-[family-name:var(--font-display)]">
+   665→                  English
+   666→                </p>
+   667→                <p className="text-[10px] text-lumina-on-surface-variant">
+   668→                  Default (UI language)
+   669→                </p>
+   670→              </div>
+   671→            </div>
+   672→
+   673→            {/* Session info card */}
+   674→            <div className="glass-pill rounded-xl p-4 space-y-2">
+   675→              <div className="flex items-center gap-2 mb-1">
+   676→                <div className="w-7 h-7 rounded-full bg-lumina-primary/10 flex items-center justify-center">
+   677→                  <Clock className="w-3.5 h-3.5 text-lumina-primary" />
+   678→                </div>
+   679→                <span className="text-xs text-lumina-on-surface-variant font-medium uppercase tracking-wider">
+   680→                  Session
+   681→                </span>
+   682→              </div>
+   683→              <div className="flex items-center justify-between text-sm">
+   684→                <span className="text-lumina-on-surface-variant">Session Started</span>
+   685→                <span className="text-lumina-on-surface font-medium tabular-nums">
+   686→                  {sessionStart}
+   687→                </span>
+   688→              </div>
+   689→              <div className="flex items-center justify-between text-sm">
+   690→                <span className="text-lumina-on-surface-variant">Browser</span>
+   691→                <span className="text-lumina-on-surface font-medium">
+   692→                  {mounted ? browserName : "…"}
+   693→                </span>
+   694→              </div>
+   695→            </div>
+   696→          </section>
+   697→
+   698→          <Separator className="bg-lumina-outline-variant/40" />
+   699→
+   700→          {/* ── Data Management ────────────────────────────── */}
+   701→          <section>
+   702→            <Label className="text-sm font-medium text-lumina-on-surface flex items-center gap-2 mb-3">
+   703→              <Download className="w-4 h-4 text-lumina-primary" />
+   704→              Data Management
+   705→            </Label>
+   706→            <div className="flex flex-col gap-2">
+   707→              <Button
+   708→                variant="outline"
+   709→                className="w-full justify-start border-lumina-outline-variant/40 text-lumina-on-surface hover:bg-lumina-primary/5 hover:text-lumina-primary hover:border-lumina-primary/30 font-[family-name:var(--font-body)] transition-all duration-200"
+   710→                onClick={handleExport}
+   711→              >
+   712→                <Download className="w-4 h-4 mr-2" />
+   713→                Export Conversations
+   714→              </Button>
+   715→
+   716→              <AlertDialog>
+   717→                <AlertDialogTrigger asChild>
+   718→                  <Button
+   719→                    variant="outline"
+   720→                    className="w-full justify-start border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive font-[family-name:var(--font-body)] transition-all duration-200"
+   721→                  >
+   722→                    <Trash2 className="w-4 h-4 mr-2" />
+   723→                    Clear All Data
+   724→                  </Button>
+   725→                </AlertDialogTrigger>
+   726→                <AlertDialogContent className="glass-card border-lumina-outline-variant/40">
+   727→                  <AlertDialogHeader>
+   728→                    <AlertDialogTitle className="font-[family-name:var(--font-display)] text-lumina-on-surface">
+   729→                      Clear all data?
+   730→                    </AlertDialogTitle>
+   731→                    <AlertDialogDescription className="text-lumina-on-surface-variant font-[family-name:var(--font-body)]">
+   732→                      This will permanently delete your profile, settings, and
+   733→                      all conversation history. This action cannot be undone.
+   734→                    </AlertDialogDescription>
+   735→                  </AlertDialogHeader>
+   736→                  <AlertDialogFooter>
+   737→                    <AlertDialogCancel className="font-[family-name:var(--font-body)]">
+   738→                      Cancel
+   739→                    </AlertDialogCancel>
+   740→                    <AlertDialogAction
+   741→                      onClick={handleClearAllData}
+   742→                      className="bg-destructive text-white hover:bg-destructive/90 font-[family-name:var(--font-body)]"
+   743→                    >
+   744→                      Delete Everything
+   745→                    </AlertDialogAction>
+   746→                  </AlertDialogFooter>
+   747→                </AlertDialogContent>
+   748→              </AlertDialog>
+   749→            </div>
+   750→          </section>
+   751→        </div>
+   752→      </SheetContent>
+   753→    </Sheet>
+   754→  );
+   755→}
+   756→

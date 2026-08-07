@@ -161,3 +161,53 @@ Work Log:
 
 Stage Summary:
 - Enhanced: src/components/suggestion-chips.tsx
+---
+Task ID: 10
+Agent: ui-enhancer
+Task: Enhance message-history.tsx with better bubbles, timestamps, hover actions, typing indicator, empty state, and markdown
+
+Work Log:
+- Enhanced message bubbles: User messages now use `bg-gradient-to-br from-lumina-primary/5 to-lumina-primary/10` gradient with rounded-br-md corner, aligned right. Assistant messages use full `glass-card` background with rounded-bl-md corner, aligned left.
+- Improved spacing: Increased gap from 2.5 to 3, avatar size from 7 to 8, max-width from 80% to 82%/80% responsive, padding from 2.5 to 3, space-y from 3 to 4, added responsive padding p-4 sm:p-5
+- Enhanced message timestamps: Created `useMessageTime` hook that shows relative time ("2m ago") for messages <1h, relative + time for <1d/<7d, and full date for older messages
+- Improved hover actions: CopyButton now works for BOTH user and assistant messages (previously only assistant). Better hover styling with rounded-lg, bg-lumina-primary/10, active:scale-95. Mobile shows dimmed copy button at opacity-60
+- Improved typing indicator: Uses glass-card container instead of plain bg, larger avatar (w-8), better spacing, shadow-sm on avatar
+- Added empty state: When no messages exist and not typing, shows a centered empty state with MessageSquare icon in glass-card container, subtle text explaining "Start a conversation with Tamanna"
+- Improved markdown: Better spacing (my-2 for code blocks, my-1 for paragraphs/bullets), glass-card for code blocks, enhanced strong/em colors with explicit lumina tokens, whitespace-pre-wrap on code
+- Improved message animation: Added scale(0.98→1) entrance for subtle spring effect, smoother easing curves
+- Added shadow transitions on hover for message bubbles and avatars
+- Reaction buttons improved: Added active state with bg-lumina-primary/10, larger touch target (p-1.5), rounded-lg
+- All existing interfaces preserved: MessageHistoryProps (onRegenerate, onEditMessage), ChatMessage types, context menu, long press support
+
+Stage Summary:
+- Enhanced: src/components/message-history.tsx
+- New sub-components: EmptyState, useMessageTime hook
+- Pre-existing lint errors only (db.ts, account-sheet.tsx) — no new errors
+
+---
+Task ID: 9
+Agent: full-stack-developer
+Task: Enhance account-sheet.tsx with activity chart, streak counter, stats grid, theme display, and session info
+
+Work Log:
+- Read worklog.md and existing account-sheet.tsx (407 lines)
+- Studied Lumina design system patterns: glass-pill, glass-card, lumina-primary/secondary, lumina-on-surface, font-display/font-body
+- Added imports: Flame, Sun, Moon, Monitor, TrendingUp, CalendarDays, Clock, Globe, Zap from lucide-react; useTheme from next-themes
+- Added localStorage activity tracking system: ACTIVITY_KEY, FIRST_USE_KEY for daily activity logging
+- Created helper functions: hashStr (deterministic date→number), shortDay, isoDate, recordTodayActivity, getActivityLog, ensureFirstUseDate, calculateStreak, countActiveDays, detectBrowser
+- Added Usage Activity Chart: 7-day bar visualization with gradient bars (lumina-primary→lumina-secondary), dimmed bars for inactive days, labels ("Today", "Mon DD"), 80px container with flex layout
+- Added Streak Counter: flame icon badge in gradient pill, orange-500 color when streak>0, muted when 0, "days" suffix label hidden on mobile
+- Enhanced Quick Stats Grid from 2×2 to 2×3: added "Avg Messages/Day" (Zap icon, lumina-primary) and "Active Days" (CalendarDays icon, lumina-secondary)
+- Added Theme Preference Display: glass-pill card with Sun/Moon icon, shows "Dark"/"Light" mode, shows "Follows system" for system theme
+- Added Language Preference card: glass-pill card with Globe icon, shows "English (Default)"
+- Added Session Info card: glass-pill with Clock icon, shows session start date+time and browser name from navigator.userAgent
+- Fixed lint: wrapped setMounted(true) in setTimeout to avoid react-hooks/set-state-in-effect rule
+- All clear-all-data now also removes ACTIVITY_KEY and FIRST_USE_KEY from localStorage
+- All lint checks pass (only pre-existing db.ts error)
+
+Stage Summary:
+- Enhanced: src/components/account-sheet.tsx (407 → 756 lines)
+- New features: 7-day activity bar chart, streak counter with flame icon, 2×3 stats grid, theme/language preference cards, session info card
+- Activity tracking uses localStorage (tamanna_activity_log, tamanna_first_use) for persistence
+- All features use Lumina design system: glass-pill, lumina-primary/secondary colors, font-display/body
+- No new dependencies added

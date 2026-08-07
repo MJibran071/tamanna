@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useAgentStore } from '@/lib/stores/agent-store';
 import { formatRelativeTime } from '@/lib/time-utils';
 import { showCopyToast, showPinToast } from '@/lib/toast';
@@ -19,6 +19,7 @@ import {
   PinOff,
   Pencil,
   ClipboardCopy,
+  MessageSquare,
 } from 'lucide-react';
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -50,23 +51,48 @@ interface ContextMenuItem {
 
 function TypingIndicator() {
   return (
-    <div className="flex items-start gap-2.5">
-      <div className="w-7 h-7 rounded-full bg-lumina-primary/15 flex items-center justify-center shrink-0 mt-0.5">
+    <div className="flex items-start gap-3">
+      {/* Avatar */}
+      <div className="w-8 h-8 rounded-full bg-lumina-primary/15 flex items-center justify-center shrink-0 mt-0.5 shadow-sm shadow-lumina-primary/10">
         <span className="font-[family-name:var(--font-body)] font-bold text-xs text-lumina-primary">T</span>
       </div>
-      <div className="flex flex-col gap-1">
-        <div className="px-4 py-3 rounded-2xl rounded-bl-md bg-lumina-surface-container-low/60 border-l-2 border-l-lumina-primary/20">
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-lumina-primary/60 typing-dot" />
-            <div className="w-2 h-2 rounded-full bg-lumina-primary/60 typing-dot" />
-            <div className="w-2 h-2 rounded-full bg-lumina-primary/60 typing-dot" />
+      {/* Bubble */}
+      <div className="flex flex-col gap-1.5">
+        <div className="glass-card rounded-2xl rounded-bl-md px-5 py-3.5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-lumina-primary/70 typing-dot" />
+            <div className="w-2 h-2 rounded-full bg-lumina-primary/70 typing-dot" />
+            <div className="w-2 h-2 rounded-full bg-lumina-primary/70 typing-dot" />
           </div>
         </div>
-        <p className="font-[family-name:var(--font-body)] text-[11px] text-lumina-on-surface-variant/50 ml-1">
-          Tamanna is thinking...
+        <p className="font-[family-name:var(--font-body)] text-[11px] text-lumina-on-surface-variant/40 ml-1 tracking-wide">
+          Tamanna is thinking…
         </p>
       </div>
     </div>
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────────
+
+function EmptyState() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+      className="flex flex-col items-center justify-center py-16 px-6"
+    >
+      <div className="w-16 h-16 rounded-2xl glass-card flex items-center justify-center mb-5 shadow-sm">
+        <MessageSquare className="w-7 h-7 text-lumina-primary/40" strokeWidth={1.5} />
+      </div>
+      <h3 className="font-[family-name:var(--font-display)] text-sm font-medium text-lumina-on-surface-variant/60 mb-1.5">
+        No messages yet
+      </h3>
+      <p className="font-[family-name:var(--font-body)] text-xs text-lumina-on-surface-variant/35 text-center max-w-[200px] leading-relaxed">
+        Start a conversation with Tamanna to see your messages here.
+      </p>
+    </motion.div>
   );
 }
 
@@ -87,14 +113,14 @@ function renderInlineMarkdown(text: string): React.ReactNode {
     }
 
     if (match[2]) {
-      parts.push(<strong key={key++} className="font-semibold">{match[2]}</strong>);
+      parts.push(<strong key={key++} className="font-semibold text-lumina-on-surface">{match[2]}</strong>);
     } else if (match[3]) {
-      parts.push(<em key={key++}>{match[3]}</em>);
+      parts.push(<em key={key++} className="text-lumina-on-surface-variant">{match[3]}</em>);
     } else if (match[4]) {
       parts.push(
         <code
           key={key++}
-          className="glass-pill bg-lumina-surface-container-high/60 px-1.5 py-0.5 rounded text-[13px] font-mono"
+          className="glass-pill bg-lumina-surface-container-high/60 px-1.5 py-0.5 rounded text-[13px] font-mono text-lumina-on-surface"
         >
           {match[4]}
         </code>
@@ -106,7 +132,7 @@ function renderInlineMarkdown(text: string): React.ReactNode {
           href={match[6]}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-lumina-primary hover:underline underline-offset-2"
+          className="text-lumina-primary hover:underline underline-offset-2 transition-colors"
         >
           {match[5]}
         </a>
@@ -143,9 +169,9 @@ function renderMarkdown(text: string): React.ReactNode[] {
       elements.push(
         <pre
           key={i}
-          className="glass-pill bg-lumina-surface-container-low/80 rounded-xl p-3 my-1.5 overflow-x-auto text-[13px]"
+          className="glass-card rounded-xl p-3 my-2 overflow-x-auto text-[13px] shadow-sm"
         >
-          <code className="font-mono text-lumina-on-surface">{codeLines.join('\n')}</code>
+          <code className="font-mono text-lumina-on-surface whitespace-pre-wrap">{codeLines.join('\n')}</code>
         </pre>
       );
       continue;
@@ -155,8 +181,8 @@ function renderMarkdown(text: string): React.ReactNode[] {
     if (line.match(/^(\s*)[-*]\s/)) {
       const content = line.replace(/^(\s*)[-*]\s/, '');
       elements.push(
-        <div key={i} className="flex gap-2 ml-2 my-0.5">
-          <span className="text-lumina-primary shrink-0">•</span>
+        <div key={i} className="flex gap-2 ml-1 my-1">
+          <span className="text-lumina-primary shrink-0 mt-0.5">•</span>
           <span>{renderInlineMarkdown(content)}</span>
         </div>
       );
@@ -168,8 +194,8 @@ function renderMarkdown(text: string): React.ReactNode[] {
     if (line.match(/^\d+\.\s/)) {
       const content = line.replace(/^\d+\.\s/, '');
       elements.push(
-        <div key={i} className="flex gap-2 ml-2 my-0.5">
-          <span className="text-lumina-primary shrink-0 font-mono text-xs">
+        <div key={i} className="flex gap-2 ml-1 my-1">
+          <span className="text-lumina-primary shrink-0 font-mono text-xs mt-0.5">
             {line.match(/^\d+/)?.[0]}.
           </span>
           <span>{renderInlineMarkdown(content)}</span>
@@ -181,9 +207,9 @@ function renderMarkdown(text: string): React.ReactNode[] {
 
     // Regular line
     if (line.trim()) {
-      elements.push(<p key={i} className="my-0.5">{renderInlineMarkdown(line)}</p>);
+      elements.push(<p key={i} className="my-1 leading-relaxed">{renderInlineMarkdown(line)}</p>);
     } else {
-      elements.push(<div key={i} className="h-2" />);
+      elements.push(<div key={i} className="h-1.5" />);
     }
     i++;
   }
@@ -193,9 +219,9 @@ function renderMarkdown(text: string): React.ReactNode[] {
 
 // ─── Copy Button ──────────────────────────────────────────────────
 
-function CopyButton({ text }: { text: string }) {
+function CopyButton({ text, isUser }: { text: string; isUser?: boolean }) {
   const [copied, setCopied] = useState(false);
-  
+
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
@@ -204,12 +230,15 @@ function CopyButton({ text }: { text: string }) {
     }).catch(() => {});
   }, [text]);
 
-  if (!text || text.length < 10) return null;
+  if (!text || text.length < 5) return null;
 
   return (
     <button
-      onClick={handleCopy}
-      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-lumina-surface-variant/50"
+      onClick={(e) => {
+        e.stopPropagation();
+        handleCopy();
+      }}
+      className="opacity-0 group-hover:opacity-100 max-sm:opacity-60 transition-all duration-200 p-1.5 rounded-lg hover:bg-lumina-primary/10 active:scale-95"
       aria-label="Copy message"
     >
       {copied ? (
@@ -219,6 +248,48 @@ function CopyButton({ text }: { text: string }) {
       )}
     </button>
   );
+}
+
+// ─── Timestamp Display ───────────────────────────────────────────
+
+function useMessageTime(timestamp: Date) {
+  return useMemo(() => {
+    const now = Date.now();
+    const then = new Date(timestamp).getTime();
+    const diffMs = now - then;
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHour = Math.floor(diffMs / 3600000);
+    const diffDay = Math.floor(diffMs / 86400000);
+
+    // Within 1 hour: show relative time
+    if (diffHour < 1) {
+      return formatRelativeTime(timestamp);
+    }
+
+    // Within 24 hours: show relative + time
+    if (diffDay < 1) {
+      return `${formatRelativeTime(timestamp)} · ${new Date(timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+    }
+
+    // Within 7 days: show day + time
+    if (diffDay < 7) {
+      return `${formatRelativeTime(timestamp)} · ${new Date(timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`;
+    }
+
+    // Older: show full date + time
+    return new Date(timestamp).toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }, [timestamp]);
 }
 
 // ─── Attachment Helpers ───────────────────────────────────────────
@@ -482,19 +553,28 @@ export default function MessageHistory({ onRegenerate, onEditMessage }: MessageH
     }
   }, [messages.length, showTyping]);
 
-  if (messages.length === 0 && !showTyping) return null;
+  // Empty state — no messages and not typing
+  if (messages.length === 0 && !showTyping) {
+    return (
+      <div className="w-full max-w-xl mx-auto">
+        <div className="glass-card rounded-2xl overflow-hidden">
+          <EmptyState />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-xl mx-auto">
       <div ref={scrollRef} className="glass-card rounded-2xl overflow-hidden">
-        <div className="p-4 space-y-3 overflow-y-auto max-h-96">
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-96">
           <AnimatePresence initial={false}>
             {messages.map((msg) => (
               <motion.div
                 key={msg.id}
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, ease: 'easeOut' }}
+                initial={{ opacity: 0, y: 8, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
               >
                 <MessageBubble
                   message={msg}
@@ -507,10 +587,10 @@ export default function MessageHistory({ onRegenerate, onEditMessage }: MessageH
           <AnimatePresence>
             {showTyping && (
               <motion.div
-                initial={{ opacity: 0, y: 4 }}
+                initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
               >
                 <TypingIndicator />
               </motion.div>
@@ -539,14 +619,7 @@ function MessageBubble({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const timeAgo = formatRelativeTime(message.timestamp);
-  const showRelative = new Date(message.timestamp).getTime() > Date.now() - 60 * 60 * 1000;
-  const time = new Date(message.timestamp).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-  const displayTime = showRelative ? timeAgo : time;
-
+  const displayTime = useMessageTime(message.timestamp);
   const latencySeconds = message.latencyMs ? (message.latencyMs / 1000).toFixed(1) : null;
   const hasAttachments = message.attachments && message.attachments.length > 0;
 
@@ -594,14 +667,14 @@ function MessageBubble({
   return (
     <>
       <div
-        className={`flex items-start gap-2.5 group ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+        className={`flex items-start gap-3 group ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
       >
         {/* Avatar circle */}
         <div
-          className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5 shadow-sm transition-shadow duration-200 group-hover:shadow-md ${
             isUser
-              ? 'bg-lumina-surface-container-high text-lumina-on-surface-variant'
-              : 'bg-lumina-primary/15 text-lumina-primary'
+              ? 'bg-lumina-surface-container-high text-lumina-on-surface-variant shadow-lumina-on-surface-variant/5'
+              : 'bg-lumina-primary/15 text-lumina-primary shadow-lumina-primary/10'
           }`}
         >
           <span className="font-[family-name:var(--font-body)] font-bold text-xs">
@@ -609,10 +682,10 @@ function MessageBubble({
           </span>
         </div>
 
-        <div className={`max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+        <div className={`max-w-[82%] sm:max-w-[80%] flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
           {/* Attachment previews */}
           {hasAttachments && (
-            <div className={`flex flex-wrap gap-2 mb-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <div className={`flex flex-wrap gap-2 mb-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
               {message.attachments!.map((attachment) => (
                 <MessageAttachment key={attachment.id} attachment={attachment} />
               ))}
@@ -626,10 +699,10 @@ function MessageBubble({
               onTouchStart={handleLongPressStart}
               onTouchEnd={handleLongPressEnd}
               onTouchCancel={handleLongPressEnd}
-              className={`select-text px-4 py-2.5 rounded-2xl text-[14px] leading-relaxed ${
+              className={`select-text px-4 py-3 text-[14px] leading-relaxed transition-shadow duration-200 group-hover:shadow-md ${
                 isUser
-                  ? 'glass-pill rounded-br-md border border-lumina-primary/20 bg-gradient-to-br from-lumina-surface-container-low to-lumina-surface-container text-lumina-on-surface'
-                  : 'bg-lumina-surface-container-low/60 text-lumina-on-surface rounded-bl-md border-l-2 border-l-lumina-primary/15'
+                  ? 'bg-gradient-to-br from-lumina-primary/5 to-lumina-primary/10 rounded-2xl rounded-br-md border border-lumina-primary/15 text-lumina-on-surface'
+                  : 'glass-card rounded-2xl rounded-bl-md text-lumina-on-surface'
               }`}
             >
               {isUser ? (
@@ -642,15 +715,15 @@ function MessageBubble({
             </div>
           )}
 
-          {/* Timestamp + optional latency badge + pinned indicator */}
-          <div className={`flex items-center gap-1.5 mt-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+          {/* Timestamp + optional latency badge + pinned indicator + copy */}
+          <div className={`flex items-center gap-2 mt-1.5 px-0.5 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
             {!isUser && message.pinned && (
               <span className="inline-flex items-center gap-0.5 text-[10px] text-lumina-primary/70 font-[family-name:var(--font-body)]">
                 <Pin className="w-2.5 h-2.5" />
                 Pinned
               </span>
             )}
-            <p className="font-[family-name:var(--font-body)] text-[10px] text-lumina-on-surface-variant/40">
+            <p className="font-[family-name:var(--font-body)] text-[10px] text-lumina-on-surface-variant/35">
               {displayTime}
             </p>
             {latencySeconds && !isUser && (
@@ -659,12 +732,14 @@ function MessageBubble({
                 {latencySeconds}s
               </span>
             )}
-            {!isUser && message.content && <CopyButton text={message.content} />}
+            {message.content && (
+              <CopyButton text={message.content} isUser={isUser} />
+            )}
           </div>
 
           {/* Reactions row for assistant messages */}
           {!isUser && message.content && (
-            <div className="flex items-center gap-1 mt-0.5 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1 mt-0.5 opacity-0 group-hover:opacity-100 max-sm:opacity-100 transition-opacity duration-200 px-0.5">
               <button
                 onClick={() =>
                   setMessageReaction(
@@ -672,10 +747,10 @@ function MessageBubble({
                     message.reaction === 'up' ? null : 'up'
                   )
                 }
-                className={`p-1 rounded transition-colors ${
+                className={`p-1.5 rounded-lg transition-all duration-200 ${
                   message.reaction === 'up'
-                    ? 'text-lumina-primary'
-                    : 'text-lumina-on-surface-variant/30 hover:text-lumina-on-surface-variant/60'
+                    ? 'text-lumina-primary bg-lumina-primary/10'
+                    : 'text-lumina-on-surface-variant/25 hover:text-lumina-on-surface-variant/50 hover:bg-lumina-surface-variant/30'
                 }`}
                 aria-label="Thumbs up"
               >
@@ -688,10 +763,10 @@ function MessageBubble({
                     message.reaction === 'down' ? null : 'down'
                   )
                 }
-                className={`p-1 rounded transition-colors ${
+                className={`p-1.5 rounded-lg transition-all duration-200 ${
                   message.reaction === 'down'
-                    ? 'text-lumina-primary'
-                    : 'text-lumina-on-surface-variant/30 hover:text-lumina-on-surface-variant/60'
+                    ? 'text-lumina-primary bg-lumina-primary/10'
+                    : 'text-lumina-on-surface-variant/25 hover:text-lumina-on-surface-variant/50 hover:bg-lumina-surface-variant/30'
                 }`}
                 aria-label="Thumbs down"
               >
