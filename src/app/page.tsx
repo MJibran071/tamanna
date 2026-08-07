@@ -34,6 +34,8 @@ const VoiceOrb = lazy(() => import('@/components/voice-orb'));
 const KeyboardShortcutsPanel = lazy(() => import('@/components/keyboard-shortcuts'));
 const OnboardingModal = lazy(() => import('@/components/onboarding-modal'));
 const FileDropZone = lazy(() => import('@/components/file-upload').then(m => ({ default: m.FileDropZone })));
+const DailyInsights = lazy(() => import('@/components/daily-insights'));
+const PageFooter = lazy(() => import('@/components/page-footer'));
 
 function PanelLoader() {
   return (
@@ -445,6 +447,11 @@ export default function HomePage() {
                   </div>
                   <div className="w-full mb-6"><TalkStepProgress /></div>
                   {(agentState === 'idle' || agentState === 'error') && <TalkSuggestionChips onSelect={handleSuggestionSelect} disabled={isProcessing} />}
+                  {(agentState === 'idle' || agentState === 'error') && (
+                    <div className="w-full mt-4">
+                      <ErrorBoundary><Suspense fallback={<PanelLoader />}><DailyInsights /></Suspense></ErrorBoundary>
+                    </div>
+                  )}
                   <div className="w-full mb-6"><TalkSocialConnect /></div>
                   <div className="w-full mt-6"><MessageHistory onRegenerate={handleRegenerate} /></div>
                 </motion.div>
@@ -480,6 +487,7 @@ export default function HomePage() {
           </main>
 
           <BottomNav activeTab={activeTab} onTabChange={handleTabChange} />
+          <Suspense fallback={null}><PageFooter /></Suspense>
         </div>
 
         <Suspense fallback={null}><KeyboardShortcutsPanel open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} /></Suspense>
