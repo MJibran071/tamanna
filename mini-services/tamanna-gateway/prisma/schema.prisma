@@ -1,0 +1,148 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── CONVERSATIONS ────────────────────────────────────────────────
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String   @default("New Conversation")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+  tasks    Task[]
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role           String
+  content        String
+  audioBase64    String?
+  planJson       String?
+  isFinal        Boolean      @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Task {
+  id             String  @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+
+  agentType      String
+  status         String  @default("pending")
+  stepIndex      Int
+
+  inputJson      String?
+  outputJson     String?
+  error          String?
+  durationMs     Int?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  artifacts      Artifact[]
+
+  @@index([conversationId, stepIndex])
+}
+
+model Artifact {
+  id             String  @id @default(cuid())
+  taskId         String
+  task           Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  type           String
+  mimeType       String
+  contentBase64  String?
+  url            String?
+  title          String?
+  createdAt      DateTime @default(now())
+
+  @@index([taskId])
+}
+
+// ─── DAG MEMORY SYSTEM ────────────────────────────────────────────
+// Three-layer DAG memory: Global, User, Agent
+// Each layer has MemoryNodes (concepts/facts) connected by MemoryEdges (relationships)
+// DAG = Directed Acyclic Graph — no cycles allowed
+
+model MemoryNode {
+  id        String   @id @default(cuid())
+
+  // Which memory layer this node belongs to
+  scope     String   // "global" | "user" | "agent"
+  scopeId   String?  // For "user" = userId, for "agent" = agentName, null for "global"
+
+  // Content
+  content   String   // The actual knowledge/fact/observation
+  category  String   @default("general") // "fact" | "preference" | "skill" | "context" | "outcome" | "correction"
+  tags      String   @default("[]") // JSON array of tag strings for fast search
+
+  // DAG metadata
+  level     Int      @default(0) // Depth in the DAG (root = 0)
+  weight    Float    @default(1.0) // Importance: 0-10, higher = more important
+  accessCount Int    @default(0) // How often retrieved (decay over time)
+  lastAccessed DateTime?
+
+  // Temporal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime? // null = never expires
+
+  // Outgoing edges (this node → other nodes)
+  outEdges MemoryEdge[] @relation("NodeFrom")
+
+  // Incoming edges (other nodes → this node)
+  inEdges  MemoryEdge[] @relation("NodeTo")
+
+  @@index([scope, scopeId])
+  @@index([category])
+  @@index([content])
+}
+
+model MemoryEdge {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+
+  // Same scope as both nodes
+  scope     String   // "global" | "user" | "agent"
+  scopeId   String?  // matches the node scopeId
+
+  // Relationship type
+  relation  String   // "causes" | "implies" | "related" | "precedes" | "corrects" | "extends" | "contradicts" | "derived_from"
+  weight    Float    @default(1.0) // Strength of relationship
+  metadata  String?  // JSON: extra info about this edge
+
+  fromNode  MemoryNode @relation("NodeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toNode    MemoryNode @relation("NodeTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([fromId])
+  @@index([toId])
+  @@index([scope, scopeId])
+  @@unique([fromId, toId, relation]) // No duplicate edges of same type between same nodes
+}
+
+// ─── LLM CACHE ─────────────────────────────────────────────────────
+
+model Cache {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}

@@ -1,0 +1,13 @@
+node_modules/
+.next/
+*.db
+*.db-journal
+*.db-wal
+*.tar.gz
+*.zip
+dev.log
+keepalive.log
+.env
+.dev-server.pid
+.keepalive.pid
+upload/

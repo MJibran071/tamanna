@@ -1,0 +1,475 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── CONVERSATIONS ────────────────────────────────────────────────
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String   @default("New Conversation")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages Message[]
+  tasks    Task[]
+
+  projectId String?
+  project   AutonomousProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  role           String
+  content        String
+  audioBase64    String?
+  planJson       String?
+  isFinal        Boolean      @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+model Task {
+  id             String  @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messageId      String?
+
+  agentType      String
+  status         String  @default("pending")
+  stepIndex      Int
+
+  inputJson      String?
+  outputJson     String?
+  error          String?
+  durationMs     Int?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+
+  artifacts      Artifact[]
+
+  @@index([conversationId, stepIndex])
+}
+
+model Artifact {
+  id             String  @id @default(cuid())
+  taskId         String
+  task           Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  type           String
+  mimeType       String
+  contentBase64  String?
+  url            String?
+  title          String?
+  createdAt      DateTime @default(now())
+
+  @@index([taskId])
+}
+
+// ─── DAG MEMORY SYSTEM ────────────────────────────────────────────
+// Three-layer DAG memory: Global, User, Agent
+// Each layer has MemoryNodes (concepts/facts) connected by MemoryEdges (relationships)
+// DAG = Directed Acyclic Graph — no cycles allowed
+
+model MemoryNode {
+  id        String   @id @default(cuid())
+
+  // Which memory layer this node belongs to
+  scope     String   // "global" | "user" | "agent"
+  scopeId   String?  // For "user" = userId, for "agent" = agentName, null for "global"
+
+  // Content
+  content   String   // The actual knowledge/fact/observation
+  category  String   @default("general") // "fact" | "preference" | "skill" | "context" | "outcome" | "correction"
+  tags      String   @default("[]") // JSON array of tag strings for fast search
+
+  // DAG metadata
+  level     Int      @default(0) // Depth in the DAG (root = 0)
+  weight    Float    @default(1.0) // Importance: 0-10, higher = more important
+  accessCount Int    @default(0) // How often retrieved (decay over time)
+  lastAccessed DateTime?
+
+  // Temporal
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime? // null = never expires
+
+  // Outgoing edges (this node → other nodes)
+  outEdges MemoryEdge[] @relation("NodeFrom")
+
+  // Incoming edges (other nodes → this node)
+  inEdges  MemoryEdge[] @relation("NodeTo")
+
+  @@index([scope, scopeId])
+  @@index([category])
+  @@index([content])
+}
+
+model MemoryEdge {
+  id        String   @id @default(cuid())
+  fromId    String
+  toId      String
+
+  // Same scope as both nodes
+  scope     String   // "global" | "user" | "agent"
+  scopeId   String?  // matches the node scopeId
+
+  // Relationship type
+  relation  String   // "causes" | "implies" | "related" | "precedes" | "corrects" | "extends" | "contradicts" | "derived_from"
+  weight    Float    @default(1.0) // Strength of relationship
+  metadata  String?  // JSON: extra info about this edge
+
+  fromNode  MemoryNode @relation("NodeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toNode    MemoryNode @relation("NodeTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([fromId])
+  @@index([toId])
+  @@index([scope, scopeId])
+  @@unique([fromId, toId, relation]) // No duplicate edges of same type between same nodes
+}
+
+// ─── SCHEDULED TASKS ────────────────────────────────────────────────
+
+model ScheduledTask {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  prompt      String   // The message/prompt to send to Tamanna
+
+  scheduleType String   // "cron" | "fixed_rate" | "one_time"
+  cronExpr     String?  // Cron expression (e.g. "0 9 * * *")
+  intervalSec  Int?     // For fixed_rate: interval in seconds
+  runAt        DateTime? // For one_time: when to run
+  timezone     String   @default("Asia/Karachi")
+
+  enabled     Boolean  @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  runCount    Int      @default(0)
+  lastError   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled, nextRunAt])
+}
+
+// ─── PLUGINS ────────────────────────────────────────────────────────
+
+model Plugin {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  category    String   // "connector" | "skill" | "data_source"
+  type        String   // Specific type: "telegram", "whatsapp", "gmail", etc.
+  config      String?  // JSON: plugin-specific configuration
+  status      String   @default("disconnected") // "connected" | "disconnected" | "error"
+  enabled     Boolean  @default(true)
+  lastSyncAt   DateTime?
+  metadata    String?  // JSON: extra info
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@unique([type])
+}
+
+// ─── LLM CACHE ─────────────────────────────────────────────────────
+
+model Cache {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// ─── AUTONOMOUS MODE ─────────────────────────────────────────────
+// Users give a high-level goal, agent creates & executes a full plan
+
+model AutonomousProject {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  goal        String
+  status      String   @default("draft") // "draft" | "planning" | "executing" | "paused" | "completed" | "failed"
+
+  // Plan breakdown
+  planJson    String?
+
+  // Execution tracking
+  currentPhase Int      @default(0)
+  currentStep  Int      @default(0)
+  totalSteps  Int      @default(0)
+  progress    Float    @default(0.0)
+
+  // Config
+  mode        String   @default("balanced") // "fast" | "balanced" | "thorough"
+  maxSteps    Int      @default(10)
+  autoExecute Boolean  @default(false)
+
+  // Metadata
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+  error       String?
+  outputJson  String?
+
+  // Relationships
+  conversations Conversation[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status])
+  @@index([progress])
+}
+
+// ─── USER BEHAVIORAL PATTERNS (Deep Learning) ────────────────────
+
+model UserPattern {
+  id          String   @id @default(cuid())
+  patternType String   // "frequent_topic" | "time_preference" | "tool_usage" | "query_pattern" | "workflow"
+  key         String
+  value       String?
+  frequency   Int      @default(1)
+  lastSeen    DateTime @default(now())
+  weight      Float    @default(1.0)
+  confidence  Float    @default(0.5)
+  metadata    String?
+  tags        String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  expiresAt   DateTime?
+
+  suggestions ProactiveSuggestion[]
+
+  @@unique([patternType, key])
+  @@index([patternType])
+  @@index([frequency])
+  @@index([confidence])
+}
+
+model ProactiveSuggestion {
+  id              String      @id @default(cuid())
+  title           String
+  description     String
+  action          String
+  actionData      String?
+  relevanceScore  Float       @default(0.5)
+  urgencyScore    Float       @default(0.3)
+  triggerPatternId String?
+  triggerPattern   UserPattern? @relation(fields: [triggerPatternId], references: [id], onDelete: SetNull)
+  status          String      @default("active")
+  shownCount      Int         @default(0)
+  acceptedAt      DateTime?
+  dismissedAt     DateTime?
+  validFrom       DateTime    @default(now())
+  validUntil      DateTime?
+  createdAt       DateTime    @default(now())
+
+  @@index([status])
+  @@index([relevanceScore])
+  @@index([validFrom, validUntil])
+}
+
+// ─── TEAM COLLABORATION ────────────────────────────────────────
+
+model TeamWorkspace {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  createdBy    String
+  accessCode   String?
+  isPublic     Boolean  @default(false)
+  maxMembers   Int      @default(5)
+  memberCount  Int      @default(1)
+  messageCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  members        TeamMember[]
+  sharedSessions SharedSession[]
+
+  @@index([accessCode])
+  @@index([createdBy])
+}
+
+model TeamMember {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  workspace    TeamWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId       String
+  displayName  String
+  role         String       @default("member")
+  avatar       String?
+  joinedAt     DateTime     @default(now())
+  lastActiveAt DateTime     @default(now())
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model SharedSession {
+  id           String       @id @default(cuid())
+  workspaceId  String
+  workspace    TeamWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  messagesJson String?
+  artifacts    String?
+  agentConfig  String?
+  status       String       @default("active")
+  createdBy    String
+  updatedBy    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([workspaceId])
+  @@index([status])
+  @@index([createdBy])
+}
+
+// ─── GOD MODE — ACTION LOG ─────────────────────────────────────────
+// Records every action Tamanna takes in the real world
+
+model ActionLog {
+  id          String   @id @default(cuid())
+  actionType  String   // "web_search" | "web_browse" | "message_send" | "purchase" | "booking" | "api_call" | "workflow"
+  command     String   // Original user command
+  intent      String?  // LLM-classified intent
+  status      String   @default("pending") // "pending" | "running" | "completed" | "failed" | "cancelled"
+  resultJson  String?  // Structured result
+  summary     String?  // Human-readable result summary
+  sourceUrl   String?  // URL browsed/acted upon
+  durationMs  Int?
+  error       String?
+  metadata    String?  // Extra context
+
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([actionType])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// ─── GOD MODE — SERVICE CONNECTIONS ───────────────────────────────
+// Tracks connected external services (WhatsApp, Telegram, Email, etc.)
+
+model ServiceConnection {
+  id            String   @id @default(cuid())
+  serviceType   String   // "whatsapp" | "telegram" | "email" | "discord" | "slack" | "twitter" | "instagram" | "custom"
+  displayName   String
+  status        String   @default("disconnected") // "connected" | "disconnected" | "error" | "pending"
+  config        String?  // JSON: auth tokens, webhook URLs, etc (encrypted in prod)
+  capabilities  String   @default("[]") // JSON array of capabilities: ["send_message", "read_messages", "send_file"]
+  lastActivity  DateTime?
+  messageCount  Int      @default(0)
+  metadata      String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([serviceType])
+  @@index([status])
+}
+
+// ─── GOD MODE — AUTOMATION WORKFLOWS ────────────────────────────────
+// Multi-step autonomous workflows (Chain Reactions)
+
+model Workflow {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  trigger     String   // "schedule" | "event" | "manual" | "webhook"
+  triggerConfig String? // JSON: cron expression, event type, webhook URL
+  stepsJson   String   // JSON array of workflow steps
+  status      String   @default("draft") // "draft" | "active" | "paused" | "archived"
+  enabled     Boolean  @default(false)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  runCount    Int      @default(0)
+  lastError   String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, enabled])
+  @@index([trigger])
+}
+
+// ─── GOD MODE — SMART REMINDERS ────────────────────────────────────
+
+model Reminder {
+  id             String   @id @default(cuid())
+  title          String
+  description    String?
+  scheduledFor   DateTime
+  status         String   @default("pending") // "pending" | "snoozed" | "completed" | "dismissed" | "expired"
+  category       String   @default("general") // "general" | "meeting" | "task" | "health" | "learning" | "social"
+  priority       String   @default("medium")  // "low" | "medium" | "high" | "urgent"
+  snoozedUntil   DateTime?
+  snoozeCount    Int      @default(0)
+  completedAt    DateTime?
+  firedAt        DateTime?
+  sourceMessage  String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, scheduledFor])
+  @@index([category])
+}
+
+// ─── GOD MODE — QUICK ACTIONS ──────────────────────────────────────
+
+model QuickAction {
+  id         String   @id @default(cuid())
+  title      String
+  prompt     String
+  icon       String   @default("Sparkles")
+  color      String   @default("#6366f1")
+  sortOrder  Int      @default(0)
+  isEnabled  Boolean  @default(true)
+  usageCount Int     @default(0)
+  lastUsedAt DateTime?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isEnabled, sortOrder])
+}
+
+// ─── BABEL — TRANSLATION LOG ────────────────────────────────────
+
+model TranslationLog {
+  id             String   @id @default(cuid())
+  sourceText     String
+  translatedText  String
+  sourceLang     String   // ISO 639-1 code
+  targetLang     String
+  engineUsed     String?  // which TTS engine generated audio
+  mode           String   @default("text") // "text" | "voice" | "conversation"
+  durationMs     Int?
+  audioSize      Int?     // bytes of generated audio
+  createdAt      DateTime @default(now())
+
+  @@index([sourceLang, targetLang])
+  @@index([createdAt])
+  @@index([engineUsed])
+}
